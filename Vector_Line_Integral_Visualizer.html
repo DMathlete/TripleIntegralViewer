@@ -134,8 +134,11 @@
 
     <div class="divider">
       <div class="label">Riemann Sum</div>
-      <div class="slider-label">Subdivisions n: <span id="nVal">60</span></div>
-      <input type="range" id="n" min="4" max="300" value="60">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+        <span class="slider-label" style="margin: 0;">n =</span>
+        <input type="number" id="nInput" min="1" value="60" style="background: #0b1324; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; padding: 3px 6px; font-family: 'Courier New', monospace; font-size: 13px; width: 90px;">
+      </div>
+      <input type="range" id="n" min="1" max="300" value="60">
       <div class="integral-box">
         <div class="integral-label">$\int_C \mathbf{F}\cdot d\mathbf{r} \approx$</div>
         <div class="integral-value" id="intVal">0.0000</div>
@@ -491,7 +494,7 @@ function rebuildContent() {
   const wAbsMax = Math.max(Math.abs(result.wMin), Math.abs(result.wMax), 1e-6);
 
   // 1. Curve (colored by F·T sign if enabled)
-  const dense = densePiecePoints(activeCurve, 400);
+  const dense = densePiecePoints(activeCurve, n);
   if (showColorCurve) {
     // Build colored line segments
     const geo = new THREE.BufferGeometry();
@@ -562,104 +565,152 @@ function rebuildContent() {
     }
   }
 
-  // 4. Work curtain (signed strip with height = F·T, on normal to curve in z-direction or binormal)
+  // 4. Work curtain — flat-topped parallelogram panels (true midpoint-rule Riemann)
+  //    Each panel: bottom edge = curve segment r(t_i)→r(t_{i+1}),
+  //    top edge = same two base points shifted by N(tMid)*F·T(tMid)*heightNorm
+  //    so the top is a straight parallel edge (flat top).
   if (showCurtain) {
-    const curtainGeo = new THREE.BufferGeometry();
     const pos = [], col = [], idx = [];
     const heightNorm = 1.5 / wAbsMax;  // max height ~1.5 units
+    const hStep = (activeCurve.tmax - activeCurve.tmin) / n;
+    let vtxBase = 0;
+    for (let i = 0; i < n; i++) {
+      const tLeft  = activeCurve.tmin + i * hStep;
+      const tRight = activeCurve.tmin + (i + 1) * hStep;
+      const tMid   = activeCurve.tmin + (i + 0.5) * hStep;
+      const pL = activeCurve.r(tLeft);
+      const pR = activeCurve.r(tRight);
+      const pM = activeCurve.r(tMid);
+      const drvM = activeCurve.dr(tMid);
+      const spM = Math.sqrt(drvM[0]*drvM[0]+drvM[1]*drvM[1]+drvM[2]*drvM[2]) || 1e-12;
+      const TM = [drvM[0]/spM, drvM[1]/spM, drvM[2]/spM];
+      const FM = activeField.fn(pM[0], pM[1], pM[2]);
+      const FdotTmid = FM[0]*TM[0]+FM[1]*TM[1]+FM[2]*TM[2];
 
-    // Build curtain by sweeping a normal vector along the curve
-    const M = Math.max(80, result.samples.length * 2);
-    let vtx = 0;
-    let prevTop = null, prevBot = null;
-    for (let i = 0; i <= M; i++) {
-      const tt = activeCurve.tmin + (activeCurve.tmax - activeCurve.tmin) * i / M;
-      const pt = activeCurve.r(tt);
-      const drv = activeCurve.dr(tt);
-      const speed = Math.sqrt(drv[0]*drv[0]+drv[1]*drv[1]+drv[2]*drv[2]) || 1e-12;
-      const T = [drv[0]/speed, drv[1]/speed, drv[2]/speed];
-      const F = activeField.fn(pt[0], pt[1], pt[2]);
-      const FdotT = F[0]*T[0]+F[1]*T[1]+F[2]*T[2];
-
-      // Normal direction: use z-up for 2D, or binormal for 3D
+      // Normal at midpoint: z-up for 2D, binormal-like for 3D
       let N;
       if (activeCurve.dim === 2) {
         N = [0, 0, 1];
       } else {
-        // approximate binormal via cross of T with global up; fallback to horizontal
         const up = [0, 0, 1];
-        let b = [T[1]*up[2]-T[2]*up[1], T[2]*up[0]-T[0]*up[2], T[0]*up[1]-T[1]*up[0]];
+        let b = [TM[1]*up[2]-TM[2]*up[1], TM[2]*up[0]-TM[0]*up[2], TM[0]*up[1]-TM[1]*up[0]];
         let bn = Math.sqrt(b[0]*b[0]+b[1]*b[1]+b[2]*b[2]);
-        if (bn < 1e-6) b = [1,0,0], bn = 1;
+        if (bn < 1e-6) { b = [1,0,0]; bn = 1; }
         N = [b[0]/bn, b[1]/bn, b[2]/bn];
       }
 
-      const height = FdotT * heightNorm;
-      const top = [pt[0] + N[0]*height, pt[1] + N[1]*height, pt[2] + N[2]*height];
-      const bot = [pt[0], pt[1], pt[2]];
-      const c = signColor(FdotT, wAbsMax);
+      const height = FdotTmid * heightNorm;
+      const off = [N[0]*height, N[1]*height, N[2]*height];
+      const BL = pL;
+      const BR = pR;
+      const TR = [pR[0]+off[0], pR[1]+off[1], pR[2]+off[2]];
+      const TL = [pL[0]+off[0], pL[1]+off[1], pL[2]+off[2]];
+      const c = signColor(FdotTmid, wAbsMax);
 
-      pos.push(bot[0], bot[1], bot[2]);
-      pos.push(top[0], top[1], top[2]);
-      col.push(c.r, c.g, c.b, 0.6);
-      col.push(c.r, c.g, c.b, 0.4);
+      pos.push(BL[0], BL[1], BL[2]);
+      pos.push(BR[0], BR[1], BR[2]);
+      pos.push(TR[0], TR[1], TR[2]);
+      pos.push(TL[0], TL[1], TL[2]);
+      col.push(c.r, c.g, c.b);
+      col.push(c.r, c.g, c.b);
+      col.push(c.r*0.85, c.g*0.85, c.b*0.85);
+      col.push(c.r*0.85, c.g*0.85, c.b*0.85);
+      idx.push(vtxBase, vtxBase+1, vtxBase+2);
+      idx.push(vtxBase, vtxBase+2, vtxBase+3);
+      vtxBase += 4;
+    }
+    if (pos.length > 0) {
+      const cGeo = new THREE.BufferGeometry();
+      cGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      cGeo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      cGeo.setIndex(idx);
+      cGeo.computeVertexNormals();
+      const curtainMat = new THREE.MeshBasicMaterial({
+        vertexColors: true, transparent: true, opacity: 0.55, side: THREE.DoubleSide
+      });
+      contentGroup.add(new THREE.Mesh(cGeo, curtainMat));
 
-      if (i > 0) {
-        const a = vtx - 2, b = vtx - 1, cc = vtx, d = vtx + 1;
-        idx.push(a, b, cc);
-        idx.push(b, d, cc);
+      // Top edge highlight — flat horizontal (in N-direction) segments across each panel top
+      const edgePos = [];
+      for (let i = 0; i < n; i++) {
+        const tLeft  = activeCurve.tmin + i * hStep;
+        const tRight = activeCurve.tmin + (i + 1) * hStep;
+        const tMid   = activeCurve.tmin + (i + 0.5) * hStep;
+        const pL = activeCurve.r(tLeft);
+        const pR = activeCurve.r(tRight);
+        const pM = activeCurve.r(tMid);
+        const drvM = activeCurve.dr(tMid);
+        const spM = Math.sqrt(drvM[0]*drvM[0]+drvM[1]*drvM[1]+drvM[2]*drvM[2]) || 1e-12;
+        const TM = [drvM[0]/spM, drvM[1]/spM, drvM[2]/spM];
+        const FM = activeField.fn(pM[0], pM[1], pM[2]);
+        const FdotTmid = FM[0]*TM[0]+FM[1]*TM[1]+FM[2]*TM[2];
+        let N;
+        if (activeCurve.dim === 2) {
+          N = [0, 0, 1];
+        } else {
+          const up = [0, 0, 1];
+          let b = [TM[1]*up[2]-TM[2]*up[1], TM[2]*up[0]-TM[0]*up[2], TM[0]*up[1]-TM[1]*up[0]];
+          let bn = Math.sqrt(b[0]*b[0]+b[1]*b[1]+b[2]*b[2]);
+          if (bn < 1e-6) { b = [1,0,0]; bn = 1; }
+          N = [b[0]/bn, b[1]/bn, b[2]/bn];
+        }
+        const h = FdotTmid * heightNorm;
+        edgePos.push(
+          pL[0] + N[0]*h, pL[1] + N[1]*h, pL[2] + N[2]*h,
+          pR[0] + N[0]*h, pR[1] + N[1]*h, pR[2] + N[2]*h
+        );
       }
-      vtx += 2;
+      const eg = new THREE.BufferGeometry();
+      eg.setAttribute('position', new THREE.Float32BufferAttribute(edgePos, 3));
+      contentGroup.add(new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0xfbbf24 })));
     }
-    curtainGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    curtainGeo.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
-    curtainGeo.setIndex(idx);
-    curtainGeo.computeVertexNormals();
-    const curtainMat = new THREE.MeshBasicMaterial({
-      vertexColors: true, transparent: true, opacity: 0.65, side: THREE.DoubleSide
-    });
-    // Note: we use rgb-only colors with alpha via material opacity since Float32 with size=4 not fully supported; fallback is uniform opacity.
-    const cGeo = new THREE.BufferGeometry();
-    const posArr = curtainGeo.attributes.position.array;
-    const colRGB = new Float32Array(col.length * 3 / 4);
-    for (let i = 0, j = 0; i < col.length; i += 4, j += 3) {
-      colRGB[j] = col[i]; colRGB[j+1] = col[i+1]; colRGB[j+2] = col[i+2];
-    }
-    cGeo.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
-    cGeo.setAttribute('color', new THREE.Float32BufferAttribute(colRGB, 3));
-    cGeo.setIndex(idx);
-    const mesh = new THREE.Mesh(cGeo, curtainMat);
-    contentGroup.add(mesh);
   }
 
-  // 4b. Panel dividers (vertical lines at partition boundaries t_i)
+  // 4b. Panel dividers — vertical segments at each partition boundary t_i,
+  //     reaching from the curve up by (adjacent panel's midpoint height * its N).
   if (showPanels && showCurtain) {
     const heightNorm = 1.5 / wAbsMax;
-    const h = (activeCurve.tmax - activeCurve.tmin) / n;
-    const linePos = [];
-    const tMaxShown = activeCurve.tmin + (activeCurve.tmax - activeCurve.tmin) * effectiveT;
-    for (let i = 0; i <= n; i++) {
-      const ti = activeCurve.tmin + i * h;
-      if (ti > tMaxShown + 1e-9) break;
-      const pt = activeCurve.r(ti);
-      const drv = activeCurve.dr(ti);
-      const sp = Math.sqrt(drv[0]*drv[0]+drv[1]*drv[1]+drv[2]*drv[2]) || 1e-12;
-      const T = [drv[0]/sp, drv[1]/sp, drv[2]/sp];
-      const F = activeField.fn(pt[0], pt[1], pt[2]);
-      const FdotT = F[0]*T[0]+F[1]*T[1]+F[2]*T[2];
+    const hStep = (activeCurve.tmax - activeCurve.tmin) / n;
+    // Precompute each panel's (N, height) at its midpoint
+    function panelVec(i) {
+      const tMid = activeCurve.tmin + (i + 0.5) * hStep;
+      const pM = activeCurve.r(tMid);
+      const drvM = activeCurve.dr(tMid);
+      const spM = Math.sqrt(drvM[0]*drvM[0]+drvM[1]*drvM[1]+drvM[2]*drvM[2]) || 1e-12;
+      const TM = [drvM[0]/spM, drvM[1]/spM, drvM[2]/spM];
+      const FM = activeField.fn(pM[0], pM[1], pM[2]);
+      const FdotTmid = FM[0]*TM[0]+FM[1]*TM[1]+FM[2]*TM[2];
       let N;
       if (activeCurve.dim === 2) {
         N = [0, 0, 1];
       } else {
         const up = [0, 0, 1];
-        let b = [T[1]*up[2]-T[2]*up[1], T[2]*up[0]-T[0]*up[2], T[0]*up[1]-T[1]*up[0]];
+        let b = [TM[1]*up[2]-TM[2]*up[1], TM[2]*up[0]-TM[0]*up[2], TM[0]*up[1]-TM[1]*up[0]];
         let bn = Math.sqrt(b[0]*b[0]+b[1]*b[1]+b[2]*b[2]);
-        if (bn < 1e-6) b = [1,0,0], bn = 1;
+        if (bn < 1e-6) { b = [1,0,0]; bn = 1; }
         N = [b[0]/bn, b[1]/bn, b[2]/bn];
       }
-      const height = FdotT * heightNorm;
-      const top = [pt[0] + N[0]*height, pt[1] + N[1]*height, pt[2] + N[2]*height];
-      linePos.push(pt[0], pt[1], pt[2], top[0], top[1], top[2]);
+      const h = FdotTmid * heightNorm;
+      return { off: [N[0]*h, N[1]*h, N[2]*h], mag: Math.abs(h) };
+    }
+    const panels = [];
+    for (let i = 0; i < n; i++) panels.push(panelVec(i));
+
+    const linePos = [];
+    for (let i = 0; i <= n; i++) {
+      const ti = activeCurve.tmin + i * hStep;
+      const pt = activeCurve.r(ti);
+      const left = i > 0 ? panels[i-1] : null;
+      const right = i < n ? panels[i] : null;
+      // Pick the panel with the larger magnitude so the divider reaches the taller top
+      let pick = null;
+      if (left && right) pick = (left.mag >= right.mag) ? left : right;
+      else pick = left || right;
+      if (!pick) continue;
+      linePos.push(
+        pt[0], pt[1], pt[2],
+        pt[0] + pick.off[0], pt[1] + pick.off[1], pt[2] + pick.off[2]
+      );
     }
     if (linePos.length > 0) {
       const pg = new THREE.BufferGeometry();
@@ -722,10 +773,24 @@ document.getElementById("applyBtn").onclick = apply;
 ["xInput","yInput","zInput","tminInput","tmaxInput","pInput","qInput","rInput"].forEach(id => {
   document.getElementById(id).addEventListener("keydown", e => { if (e.key === "Enter") apply(); });
 });
-document.getElementById("n").addEventListener("input", e => {
-  n = parseInt(e.target.value);
-  document.getElementById("nVal").textContent = n;
+function setN(newN) {
+  newN = Math.max(1, Math.floor(newN));
+  if (!isFinite(newN)) return;
+  n = newN;
+  const nInputEl = document.getElementById("nInput");
+  const sliderEl = document.getElementById("n");
+  if (document.activeElement !== nInputEl) nInputEl.value = n;
+  sliderEl.value = Math.min(n, 300);
   rebuildContent();
+}
+document.getElementById("n").addEventListener("input", e => { setN(+e.target.value); });
+document.getElementById("nInput").addEventListener("input", e => {
+  const v = parseInt(e.target.value, 10);
+  if (isFinite(v) && v >= 1) setN(v);
+});
+document.getElementById("nInput").addEventListener("blur", e => {
+  const v = parseInt(e.target.value, 10);
+  if (!isFinite(v) || v < 1) { e.target.value = n; }
 });
 document.getElementById("ascale").addEventListener("input", e => {
   arrowScale = parseInt(e.target.value) / 100;

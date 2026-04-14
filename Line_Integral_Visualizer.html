@@ -108,8 +108,11 @@
 
     <div class="divider">
       <div class="label">Riemann Sum</div>
-      <div class="slider-label">Subdivisions n: <span id="nVal">60</span></div>
-      <input type="range" id="n" min="4" max="300" value="60">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+        <span class="slider-label" style="margin: 0;">n =</span>
+        <input type="number" id="nInput" min="1" value="60" style="background: #0b1324; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; padding: 3px 6px; font-family: 'Courier New', monospace; font-size: 13px; width: 90px;">
+      </div>
+      <input type="range" id="n" min="1" max="300" value="60">
       <div class="integral-box">
         <div style="font-size: 12px; color: #94a3b8;">∫_C f ds ≈</div>
         <div class="integral-value" id="intVal">0.0000</div>
@@ -413,7 +416,7 @@ function rebuildContent() {
   const fAbs = Math.max(Math.abs(result.fMin), Math.abs(result.fMax), 0.01);
   const hs = 2.5 / fAbs;
 
-  const densePts = densePiecePoints(activeCurve, Math.max(200, n*2));
+  const densePts = densePiecePoints(activeCurve, n);
   const cutoff = Math.floor(densePts.length * effectiveT);
   if (cutoff < 2) { renderer.render(scene, camera); return; }
 
@@ -441,20 +444,74 @@ function rebuildContent() {
 
   // Curtain
   if (showCurtain) {
+    const hStep = (activeCurve.tmax - activeCurve.tmin) / n;
     if (activeCurve.dim === 2) {
       const positions = [], colors = [], indices = [];
-      for (let i = 0; i < cutoff; i++) {
-        const p = densePts[i].pt;
-        const fv = activeField.fn(p[0], p[1], p[2]);
-        const hh = fv * hs;
-        positions.push(p[0], p[1], 0);
-        positions.push(p[0], p[1], hh);
-        const col = fv >= 0 ? new THREE.Color(0x38bdf8) : new THREE.Color(0xf472b6);
-        colors.push(col.r, col.g, col.b, col.r*0.7, col.g*0.7, col.b*0.7);
-        if (i > 0) {
-          const a = (i-1)*2, b = (i-1)*2+1, c = i*2, d = i*2+1;
-          indices.push(a, b, d, a, d, c);
-        }
+      let vtxBase = 0;
+      for (let i = 0; i < cutoff - 1; i++) {
+        const pL = densePts[i].pt, pR = densePts[i+1].pt;
+        const tMid = activeCurve.tmin + (i + 0.5) * hStep;
+        const pMid = activeCurve.r(tMid);
+        const fMid = activeField.fn(pMid[0], pMid[1], pMid[2]);
+        const hMid = fMid * hs;
+        // 4 vertices per panel: BL, BR, TR, TL — flat top at hMid
+        positions.push(pL[0], pL[1], 0);
+        positions.push(pR[0], pR[1], 0);
+        positions.push(pR[0], pR[1], hMid);
+        positions.push(pL[0], pL[1], hMid);
+        const col = fMid >= 0 ? new THREE.Color(0x38bdf8) : new THREE.Color(0xf472b6);
+        colors.push(col.r, col.g, col.b);
+        colors.push(col.r, col.g, col.b);
+        colors.push(col.r*0.7, col.g*0.7, col.b*0.7);
+        colors.push(col.r*0.7, col.g*0.7, col.b*0.7);
+        indices.push(vtxBase, vtxBase+1, vtxBase+2);
+        indices.push(vtxBase, vtxBase+2, vtxBase+3);
+        vtxBase += 4;
+      }
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geom.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+      geom.setIndex(indices);
+      geom.computeVertexNormals();
+      contentGroup.add(new THREE.Mesh(geom, new THREE.MeshBasicMaterial({
+        vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity: 0.45
+      })));
+
+      // Top edge highlight — horizontal segment across each panel
+      const edgePos = [];
+      for (let i = 0; i < cutoff - 1; i++) {
+        const pL = densePts[i].pt, pR = densePts[i+1].pt;
+        const tMid = activeCurve.tmin + (i + 0.5) * hStep;
+        const pMid = activeCurve.r(tMid);
+        const fMid = activeField.fn(pMid[0], pMid[1], pMid[2]);
+        const hMid = fMid * hs;
+        edgePos.push(pL[0], pL[1], hMid, pR[0], pR[1], hMid);
+      }
+      const eg = new THREE.BufferGeometry();
+      eg.setAttribute("position", new THREE.Float32BufferAttribute(edgePos, 3));
+      contentGroup.add(new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0xfbbf24 })));
+    } else {
+      // 3D: flat-topped parallelograms rising in +z from each curve segment
+      const positions = [], colors = [], indices = [];
+      let vtxBase = 0;
+      for (let i = 0; i < cutoff - 1; i++) {
+        const pL = densePts[i].pt, pR = densePts[i+1].pt;
+        const tMid = activeCurve.tmin + (i + 0.5) * hStep;
+        const pMid = activeCurve.r(tMid);
+        const fMid = activeField.fn(pMid[0], pMid[1], pMid[2]);
+        const hMid = fMid * hs * 0.5;
+        positions.push(pL[0], pL[1], pL[2]);
+        positions.push(pR[0], pR[1], pR[2]);
+        positions.push(pR[0], pR[1], pR[2] + hMid);
+        positions.push(pL[0], pL[1], pL[2] + hMid);
+        const col = fMid >= 0 ? new THREE.Color(0x38bdf8) : new THREE.Color(0xf472b6);
+        colors.push(col.r, col.g, col.b);
+        colors.push(col.r, col.g, col.b);
+        colors.push(col.r*0.7, col.g*0.7, col.b*0.7);
+        colors.push(col.r*0.7, col.g*0.7, col.b*0.7);
+        indices.push(vtxBase, vtxBase+1, vtxBase+2);
+        indices.push(vtxBase, vtxBase+2, vtxBase+3);
+        vtxBase += 4;
       }
       const geom = new THREE.BufferGeometry();
       geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
@@ -468,48 +525,44 @@ function rebuildContent() {
       // Top edge highlight
       const edgePos = [];
       for (let i = 0; i < cutoff - 1; i++) {
-        const p1 = densePts[i].pt, p2 = densePts[i+1].pt;
-        const f1 = activeField.fn(p1[0], p1[1], p1[2]);
-        const f2 = activeField.fn(p2[0], p2[1], p2[2]);
-        edgePos.push(p1[0], p1[1], f1*hs, p2[0], p2[1], f2*hs);
+        const pL = densePts[i].pt, pR = densePts[i+1].pt;
+        const tMid = activeCurve.tmin + (i + 0.5) * hStep;
+        const pMid = activeCurve.r(tMid);
+        const fMid = activeField.fn(pMid[0], pMid[1], pMid[2]);
+        const hMid = fMid * hs * 0.5;
+        edgePos.push(pL[0], pL[1], pL[2] + hMid, pR[0], pR[1], pR[2] + hMid);
       }
       const eg = new THREE.BufferGeometry();
       eg.setAttribute("position", new THREE.Float32BufferAttribute(edgePos, 3));
       contentGroup.add(new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0xfbbf24 })));
-    } else {
-      const positions = [], colors = [];
-      for (let i = 0; i < cutoff; i += 2) {
-        const p = densePts[i].pt;
-        const fv = activeField.fn(p[0], p[1], p[2]);
-        const hh = fv * hs * 0.5;
-        positions.push(p[0], p[1], p[2], p[0], p[1], p[2] + hh);
-        const col = fv >= 0 ? new THREE.Color(0x38bdf8) : new THREE.Color(0xf472b6);
-        colors.push(col.r, col.g, col.b, col.r, col.g, col.b);
-      }
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-      geom.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-      contentGroup.add(new THREE.LineSegments(geom, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.7 })));
     }
   }
 
   // Panel dividers (vertical lines at partition boundaries t_i = tmin + i*h)
+  // Heights match adjacent rectangle tops (midpoint-rule heights)
   if (showPanels && showCurtain) {
     const linePos = [];
-    const h = (activeCurve.tmax - activeCurve.tmin) / n;
-    // Only draw boundaries up to the sweep cutoff
-    const tMaxShown = activeCurve.tmin + (activeCurve.tmax - activeCurve.tmin) * effectiveT;
-    for (let i = 0; i <= n; i++) {
-      const ti = activeCurve.tmin + i * h;
-      if (ti > tMaxShown + 1e-9) break;
-      const p = activeCurve.r(ti);
+    const hStep = (activeCurve.tmax - activeCurve.tmin) / n;
+    const panelsShown = cutoff - 1;
+    const zScale = activeCurve.dim === 2 ? 1 : 0.5;
+    // Precompute panel heights
+    const panelH = [];
+    for (let i = 0; i < panelsShown; i++) {
+      const tMid = activeCurve.tmin + (i + 0.5) * hStep;
+      const pMid = activeCurve.r(tMid);
+      const fMid = activeField.fn(pMid[0], pMid[1], pMid[2]);
+      panelH.push(fMid * hs * zScale);
+    }
+    for (let i = 0; i <= panelsShown; i++) {
+      if (i >= densePts.length) break;
+      const p = densePts[i].pt;
+      const leftH = i > 0 ? panelH[i-1] : 0;
+      const rightH = i < panelsShown ? panelH[i] : 0;
+      // Reach the taller of the two adjacent panel tops
+      const hh = Math.abs(leftH) >= Math.abs(rightH) ? leftH : rightH;
       if (activeCurve.dim === 2) {
-        const fv = activeField.fn(p[0], p[1], p[2]);
-        const hh = fv * hs;
         linePos.push(p[0], p[1], 0, p[0], p[1], hh);
       } else {
-        const fv = activeField.fn(p[0], p[1], p[2]);
-        const hh = fv * hs * 0.5;
         linePos.push(p[0], p[1], p[2], p[0], p[1], p[2] + hh);
       }
     }
@@ -566,7 +619,25 @@ document.getElementById("applyBtn").onclick = apply;
   });
 });
 
-document.getElementById("n").oninput = e => { n = +e.target.value; document.getElementById("nVal").textContent = n; rebuildContent(); };
+function setN(newN) {
+  newN = Math.max(1, Math.floor(newN));
+  if (!isFinite(newN)) return;
+  n = newN;
+  const nInputEl = document.getElementById("nInput");
+  const sliderEl = document.getElementById("n");
+  if (document.activeElement !== nInputEl) nInputEl.value = n;
+  sliderEl.value = Math.min(n, 300);
+  rebuildContent();
+}
+document.getElementById("n").oninput = e => { setN(+e.target.value); };
+document.getElementById("nInput").oninput = e => {
+  const v = parseInt(e.target.value, 10);
+  if (isFinite(v) && v >= 1) setN(v);
+};
+document.getElementById("nInput").addEventListener("blur", e => {
+  const v = parseInt(e.target.value, 10);
+  if (!isFinite(v) || v < 1) { e.target.value = n; }
+});
 document.getElementById("chkCurtain").onchange = e => { showCurtain = e.target.checked; rebuildContent(); };
 document.getElementById("chkPanels").onchange = e => { showPanels = e.target.checked; rebuildContent(); };
 document.getElementById("chkColor").onchange = e => { showColor = e.target.checked; rebuildContent(); };
@@ -606,7 +677,7 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-// Initial apply
+// Initial apply.
 apply();
 animate();
 </script>
