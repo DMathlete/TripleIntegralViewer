@@ -133,16 +133,6 @@
     </div>
 
     <div class="divider">
-      <div class="label">Curve Presets</div>
-      <div id="curves"></div>
-    </div>
-
-    <div class="divider">
-      <div class="label">Vector Field Presets</div>
-      <div id="fields"></div>
-    </div>
-
-    <div class="divider">
       <div class="label">Riemann Sum</div>
       <div class="slider-label">Subdivisions n: <span id="nVal">60</span></div>
       <input type="range" id="n" min="4" max="300" value="60">
@@ -157,13 +147,13 @@
       <div class="label">Visualization Layers</div>
       <label><input type="checkbox" id="chkArrowsOnCurve" checked>
         <span><span class="legend-dot" style="background:#fbbf24;"></span>F along curve</span></label>
-      <label><input type="checkbox" id="chkTangent">
+      <label><input type="checkbox" id="chkTangent" checked>
         <span><span class="legend-dot" style="background:#38bdf8;"></span>Tangent T + projection F·T</span></label>
       <label><input type="checkbox" id="chkCurtain" checked>
         <span><span class="legend-dot" style="background:#4ade80;"></span>/<span class="legend-dot" style="background:#f87171;"></span> Work curtain (F·T)</span></label>
-      <label><input type="checkbox" id="chkPanels">
+      <label><input type="checkbox" id="chkPanels" checked>
         <span><span class="legend-dot" style="background:#fbbf24;"></span>Panel dividers</span></label>
-      <label><input type="checkbox" id="chkFieldGrid">
+      <label><input type="checkbox" id="chkFieldGrid" checked>
         <span><span class="legend-dot" style="background:#94a3b8;"></span>Full field grid</span></label>
       <label><input type="checkbox" id="chkColorCurve" checked>Color curve by F·T sign</label>
       <label><input type="checkbox" id="chkGrid" checked>Grid & Axes</label>
@@ -188,30 +178,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
-// ─── Presets ───
-const CURVE_PRESETS = {
-  "Unit circle (ccw)":             { x: "cos(t)",   y: "sin(t)",   z: "0", tmin: "0", tmax: "2*pi" },
-  "Unit circle (cw) — reversed":   { x: "cos(-t)",  y: "sin(-t)",  z: "0", tmin: "0", tmax: "2*pi" },
-  "Line (0,0)→(1,1)":              { x: "t",        y: "t",        z: "0", tmin: "0", tmax: "1" },
-  "Line (0,0)→(3,4)":              { x: "3*t",      y: "4*t",      z: "0", tmin: "0", tmax: "1" },
-  "Parabola y=x², x∈[0,2]":        { x: "t",        y: "t^2",      z: "0", tmin: "0", tmax: "2" },
-  "Ellipse a=3, b=2":              { x: "3*cos(t)", y: "2*sin(t)", z: "0", tmin: "0", tmax: "2*pi" },
-  "3D Helix ⟨cos t, sin t, t⟩":   { x: "cos(t)",   y: "sin(t)",   z: "t", tmin: "0", tmax: "2*pi" },
-  "Twisted cubic ⟨t, t², t³⟩":    { x: "t",        y: "t^2",      z: "t^3", tmin: "0", tmax: "1" },
-};
-
-const FIELD_PRESETS = {
-  "F = ⟨-y, x, 0⟩   (rotational)":        { p: "-y",        q: "x",         r: "0" },
-  "F = ⟨x, y, 0⟩   (radial outward)":     { p: "x",         q: "y",         r: "0" },
-  "F = ⟨-x, -y, 0⟩   (radial inward)":    { p: "-x",        q: "-y",        r: "0" },
-  "F = ⟨1, 0, 0⟩   (constant)":           { p: "1",         q: "0",         r: "0" },
-  "F = ⟨y, x, 0⟩   (conservative: f=xy)":  { p: "y",         q: "x",         r: "0" },
-  "F = ⟨2x, 2y, 2z⟩ (∇(x²+y²+z²))":        { p: "2*x",       q: "2*y",       r: "2*z" },
-  "F = ⟨yz, xz, xy⟩ (∇(xyz))":              { p: "y*z",       q: "x*z",       r: "x*y" },
-  "F = ⟨-y/(x²+y²), x/(x²+y²), 0⟩":         { p: "-y/(x^2+y^2)", q: "x/(x^2+y^2)", r: "0" },
-  "F = ⟨x², y², z²⟩":                        { p: "x^2",       q: "y^2",       r: "z^2" },
-};
-
 // ─── Known exact values (keyed by canonical input) ───
 // Canonical key: x|y|z|tmin|tmax|P|Q|R
 const EXACT = {
@@ -329,7 +295,6 @@ function apply() {
     activeCurve = newCurve;
     activeField = newField;
     lastInputs = inp;
-    updatePresetHighlights();
     rebuildContent();
   } catch (e) {
     errEl.textContent = `Error in ${which}: ${e.message}`;
@@ -426,10 +391,10 @@ scene.add(contentGroup);
 // ─── Display state ───
 let n = 60;
 let showArrowsOnCurve = true;
-let showTangent = false;
+let showTangent = true;
 let showCurtain = true;
-let showPanels = false;
-let showFieldGrid = false;
+let showPanels = true;
+let showFieldGrid = true;
 let showColorCurve = true;
 let arrowScale = 1.0;
 let gridDensity = 7;
@@ -744,51 +709,6 @@ function rebuildContent() {
   else exactNote.textContent = `midpoint Riemann sum, n = ${n}`;
 }
 
-// ─── Presets UI ───
-function buildPresetButtons() {
-  const cWrap = document.getElementById("curves");
-  cWrap.innerHTML = "";
-  Object.entries(CURVE_PRESETS).forEach(([name, preset]) => {
-    const b = document.createElement("button");
-    b.className = "opt-btn";
-    b.textContent = name;
-    b.dataset.preset = name;
-    b.onclick = () => {
-      setInputs(preset.x, preset.y, preset.z, preset.tmin, preset.tmax);
-      apply();
-    };
-    cWrap.appendChild(b);
-  });
-  const fWrap = document.getElementById("fields");
-  fWrap.innerHTML = "";
-  Object.entries(FIELD_PRESETS).forEach(([name, preset]) => {
-    const b = document.createElement("button");
-    b.className = "opt-btn";
-    b.textContent = name;
-    b.dataset.preset = name;
-    b.onclick = () => {
-      setInputs(undefined, undefined, undefined, undefined, undefined, preset.p, preset.q, preset.r);
-      apply();
-    };
-    fWrap.appendChild(b);
-  });
-}
-
-function updatePresetHighlights() {
-  if (!lastInputs) return;
-  document.querySelectorAll("#curves .opt-btn").forEach(b => {
-    const p = CURVE_PRESETS[b.dataset.preset];
-    const match = p.x === lastInputs.x && p.y === lastInputs.y && p.z === lastInputs.z
-      && p.tmin === lastInputs.tmin && p.tmax === lastInputs.tmax;
-    b.classList.toggle("active", match);
-  });
-  document.querySelectorAll("#fields .opt-btn").forEach(b => {
-    const p = FIELD_PRESETS[b.dataset.preset];
-    const match = p.p === lastInputs.p && p.q === lastInputs.q && p.r === lastInputs.r;
-    b.classList.toggle("active", match);
-  });
-}
-
 // ─── Animation loop ───
 function render() {
   requestAnimationFrame(render);
@@ -853,7 +773,6 @@ document.getElementById("resetAllBtn").onclick = (e) => {
 };
 
 // ─── Init ───
-buildPresetButtons();
 apply();
 </script>
 </body>

@@ -107,16 +107,6 @@
     </div>
 
     <div class="divider">
-      <div class="label">Curve Presets (click to fill)</div>
-      <div id="curves"></div>
-    </div>
-
-    <div class="divider">
-      <div class="label">Integrand Presets</div>
-      <div id="fields"></div>
-    </div>
-
-    <div class="divider">
       <div class="label">Riemann Sum</div>
       <div class="slider-label">Subdivisions n: <span id="nVal">60</span></div>
       <input type="range" id="n" min="4" max="300" value="60">
@@ -130,12 +120,10 @@
     <div class="divider">
       <div class="label">Display</div>
       <label><input type="checkbox" id="chkCurtain" checked> Curtain / Ribbon</label>
-      <label><input type="checkbox" id="chkPanels"> Panel dividers</label>
+      <label><input type="checkbox" id="chkPanels" checked> Panel dividers</label>
       <label><input type="checkbox" id="chkColor" checked> Color curve by f</label>
       <label><input type="checkbox" id="chkGrid" checked> Grid & Axes</label>
-      <label><input type="checkbox" id="chkSamples"> Riemann samples</label>
-      <div class="slider-label">Curtain height scale: <span id="hsVal">1.00</span></div>
-      <input type="range" id="hscale" min="10" max="300" value="100">
+      <label><input type="checkbox" id="chkSamples" checked> Riemann samples</label>
     </div>
 
     <div class="divider">
@@ -148,32 +136,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
-// ─── Presets (populate input fields) ───
-const CURVE_PRESETS = {
-  "Semicircle r=2, (2,0)→(−2,0)": { x: "2*cos(t)", y: "2*sin(t)", z: "0", tmin: "0", tmax: "pi" },
-  "Unit Circle (ccw)":             { x: "cos(t)",   y: "sin(t)",   z: "0", tmin: "0", tmax: "2*pi" },
-  "Line segment (0,0)→(3,4)":     { x: "3*t",      y: "4*t",      z: "0", tmin: "0", tmax: "1" },
-  "Parabola y=x², x∈[−1,1]":      { x: "t",        y: "t^2",      z: "0", tmin: "-1", tmax: "1" },
-  "Ellipse a=3, b=2":              { x: "3*cos(t)", y: "2*sin(t)", z: "0", tmin: "0", tmax: "2*pi" },
-  "Cardioid r=1+cos(θ)":           { x: "(1+cos(t))*cos(t)", y: "(1+cos(t))*sin(t)", z: "0", tmin: "0", tmax: "2*pi" },
-  "3D Helix ⟨cos t, sin t, t⟩":   { x: "cos(t)",   y: "sin(t)",   z: "t", tmin: "0", tmax: "2*pi" },
-  "3D Curve ⟨t, t², t³⟩":         { x: "t",        y: "t^2",      z: "t^3", tmin: "0", tmax: "1.5" },
-  "Viviani's curve":               { x: "1+cos(t)", y: "sin(t)",   z: "2*sin(t/2)", tmin: "-2*pi", tmax: "2*pi" },
-};
-
-const FIELD_PRESETS = {
-  "f = 1 (arc length)": "1",
-  "f = x":               "x",
-  "f = y":               "y",
-  "f = z":               "z",
-  "f = x + y^2":         "x + y^2",
-  "f = xy":              "x*y",
-  "f = x^2 + y^2":       "x^2 + y^2",
-  "f = |x|+|y|+1":       "abs(x) + abs(y) + 1",
-  "f = x + y + z":       "x + y + z",
-  "f = e^(−(x²+y²))":    "e^(-(x^2+y^2))",
-};
-
 // ─── Known exact values (keyed by full canonical input) ───
 const EXACT = {
   "2*cos(t)|2*sin(t)|0|0|pi|x + y^2": "Exact: 4π ≈ 12.5664",
@@ -281,7 +243,6 @@ function apply() {
     activeCurve = newCurve;
     activeField = newField;
     lastInputs = inp;
-    updatePresetHighlights();
     rebuildContent();
   } catch (e) {
     errEl.textContent = `Error in ${which}: ${e.message}`;
@@ -389,8 +350,7 @@ scene.add(contentGroup);
 
 // ─── State ───
 let n = 60;
-let showCurtain = true, showColor = true, showSamples = false, showPanels = false;
-let heightScale = 1.0;
+let showCurtain = true, showColor = true, showSamples = true, showPanels = true;
 let sweepT = null;
 let sweepAnim = null;
 
@@ -451,8 +411,7 @@ function rebuildContent() {
 
   const effectiveT = sweepT !== null ? sweepT : 1;
   const fAbs = Math.max(Math.abs(result.fMin), Math.abs(result.fMax), 0.01);
-  const baseHScale = 2.5 / fAbs;
-  const hs = baseHScale * heightScale;
+  const hs = 2.5 / fAbs;
 
   const densePts = densePiecePoints(activeCurve, Math.max(200, n*2));
   const cutoff = Math.floor(densePts.length * effectiveT);
@@ -599,46 +558,6 @@ function rebuildContent() {
   } catch (e) { /* silent */ }
 }
 
-// ─── Preset buttons ───
-const curvesDiv = document.getElementById("curves");
-Object.keys(CURVE_PRESETS).forEach(k => {
-  const b = document.createElement("button");
-  b.className = "opt-btn";
-  b.textContent = k;
-  b.onclick = () => {
-    const p = CURVE_PRESETS[k];
-    setInputs(p.x, p.y, p.z, p.tmin, p.tmax);
-    apply();
-  };
-  curvesDiv.appendChild(b);
-});
-
-const fieldsDiv = document.getElementById("fields");
-Object.keys(FIELD_PRESETS).forEach(k => {
-  const b = document.createElement("button");
-  b.className = "opt-btn";
-  b.textContent = k;
-  b.onclick = () => {
-    setInputs(undefined, undefined, undefined, undefined, undefined, FIELD_PRESETS[k]);
-    apply();
-  };
-  fieldsDiv.appendChild(b);
-});
-
-function updatePresetHighlights() {
-  const inp = getInputs();
-  curvesDiv.querySelectorAll(".opt-btn").forEach((b, i) => {
-    const k = Object.keys(CURVE_PRESETS)[i];
-    const p = CURVE_PRESETS[k];
-    const match = p.x === inp.x && p.y === inp.y && p.z === inp.z && p.tmin === inp.tmin && p.tmax === inp.tmax;
-    b.classList.toggle("active", match);
-  });
-  fieldsDiv.querySelectorAll(".opt-btn").forEach((b, i) => {
-    const k = Object.keys(FIELD_PRESETS)[i];
-    b.classList.toggle("active", FIELD_PRESETS[k] === inp.f);
-  });
-}
-
 // ─── Controls ───
 document.getElementById("applyBtn").onclick = apply;
 ["xInput","yInput","zInput","tminInput","tmaxInput","fInput"].forEach(id => {
@@ -653,11 +572,6 @@ document.getElementById("chkPanels").onchange = e => { showPanels = e.target.che
 document.getElementById("chkColor").onchange = e => { showColor = e.target.checked; rebuildContent(); };
 document.getElementById("chkGrid").onchange = e => { showGrid = e.target.checked; buildAxes(); };
 document.getElementById("chkSamples").onchange = e => { showSamples = e.target.checked; rebuildContent(); };
-document.getElementById("hscale").oninput = e => {
-  heightScale = +e.target.value / 100;
-  document.getElementById("hsVal").textContent = heightScale.toFixed(2);
-  rebuildContent();
-};
 
 document.getElementById("resetBtn").onclick = () => {
   camera.position.copy(DEFAULT_CAM);
