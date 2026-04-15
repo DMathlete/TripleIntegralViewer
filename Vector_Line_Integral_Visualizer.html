@@ -68,7 +68,11 @@
 <p id="subtitle">Work done by a vector field along an oriented curve</p>
 <div id="formula">$$\displaystyle \int_C \mathbf{F}\cdot d\mathbf{r} \;=\; \int_a^b \mathbf{F}(\mathbf{r}(t))\cdot \mathbf{r}'(t)\, dt \;=\; \int_a^b (\mathbf{F}\cdot \mathbf{T})\, ds$$</div>
 <div id="nav-links">
-  <a href="Line_Integral_Visualizer.html">← Scalar Line Integral Tool</a>
+  <a href="index.html">← Calculus Tools</a>
+  <span style="color:#334155;">|</span>
+  <a href="Line_Integral_Visualizer.html">Scalar Line Integral</a>
+  <span style="color:#334155;">|</span>
+  <a href="Path_Independence_Visualizer.html">Path Independence &amp; Curl (L52)</a>
   <span style="color:#334155;">|</span>
   <a href="#" id="resetAllBtn">Reset to defaults</a>
 </div>
@@ -493,14 +497,16 @@ function rebuildContent() {
   const arrowFactor = arrowNorm * arrowScale;
   const wAbsMax = Math.max(Math.abs(result.wMin), Math.abs(result.wMax), 1e-6);
 
-  // 1. Curve (colored by F·T sign if enabled)
+  // 1. Curve (colored by F·T sign if enabled) — respects sweep cutoff
   const dense = densePiecePoints(activeCurve, n);
+  const denseCutoff = Math.max(2, Math.floor(dense.length * effectiveT));
+  const nSwept = Math.max(1, Math.ceil(n * effectiveT));
   if (showColorCurve) {
     // Build colored line segments
     const geo = new THREE.BufferGeometry();
     const positions = [];
     const colors = [];
-    for (let i = 0; i < dense.length - 1; i++) {
+    for (let i = 0; i < denseCutoff - 1; i++) {
       const p0 = dense[i], p1 = dense[i+1];
       const tMid = activeCurve.tmin + (activeCurve.tmax - activeCurve.tmin) * (i + 0.5) / (dense.length - 1);
       const pm = activeCurve.r(tMid);
@@ -519,15 +525,16 @@ function rebuildContent() {
     const line = new THREE.LineSegments(geo, mat);
     contentGroup.add(line);
   } else {
-    const pts = dense.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+    const pts = dense.slice(0, denseCutoff).map(p => new THREE.Vector3(p[0], p[1], p[2]));
     const geo = new THREE.BufferGeometry().setFromPoints(pts);
     const mat = new THREE.LineBasicMaterial({ color: 0xfbbf24 });
     contentGroup.add(new THREE.Line(geo, mat));
   }
 
-  // Start/End markers
+  // Start/End markers — end marker rides the sweep tip while animating
   const start = activeCurve.r(activeCurve.tmin);
-  const end = activeCurve.r(activeCurve.tmax);
+  const tipT = activeCurve.tmin + (activeCurve.tmax - activeCurve.tmin) * effectiveT;
+  const end = activeCurve.r(tipT);
   const startMarker = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 16),
     new THREE.MeshBasicMaterial({ color: 0x4ade80 }));
   startMarker.position.set(start[0], start[1], start[2]);
@@ -574,7 +581,7 @@ function rebuildContent() {
     const heightNorm = 1.5 / wAbsMax;  // max height ~1.5 units
     const hStep = (activeCurve.tmax - activeCurve.tmin) / n;
     let vtxBase = 0;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < nSwept; i++) {
       const tLeft  = activeCurve.tmin + i * hStep;
       const tRight = activeCurve.tmin + (i + 1) * hStep;
       const tMid   = activeCurve.tmin + (i + 0.5) * hStep;
@@ -632,7 +639,7 @@ function rebuildContent() {
 
       // Top edge highlight — flat horizontal (in N-direction) segments across each panel top
       const edgePos = [];
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < nSwept; i++) {
         const tLeft  = activeCurve.tmin + i * hStep;
         const tRight = activeCurve.tmin + (i + 1) * hStep;
         const tMid   = activeCurve.tmin + (i + 0.5) * hStep;
@@ -694,14 +701,14 @@ function rebuildContent() {
       return { off: [N[0]*h, N[1]*h, N[2]*h], mag: Math.abs(h) };
     }
     const panels = [];
-    for (let i = 0; i < n; i++) panels.push(panelVec(i));
+    for (let i = 0; i < nSwept; i++) panels.push(panelVec(i));
 
     const linePos = [];
-    for (let i = 0; i <= n; i++) {
+    for (let i = 0; i <= nSwept; i++) {
       const ti = activeCurve.tmin + i * hStep;
       const pt = activeCurve.r(ti);
       const left = i > 0 ? panels[i-1] : null;
-      const right = i < n ? panels[i] : null;
+      const right = i < nSwept ? panels[i] : null;
       // Pick the panel with the larger magnitude so the divider reaches the taller top
       let pick = null;
       if (left && right) pick = (left.mag >= right.mag) ? left : right;
