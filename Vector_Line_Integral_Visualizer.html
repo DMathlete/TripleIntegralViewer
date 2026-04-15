@@ -185,6 +185,40 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
+// ─── Smart number formatter: π-multiples > simple fractions > 2 decimals ───
+function bestFraction(x, maxDen) {
+  if (!isFinite(x)) return null;
+  let bestP = 0, bestQ = 1, bestErr = Math.abs(x);
+  for (let q = 1; q <= maxDen; q++) {
+    const p = Math.round(x * q);
+    const err = Math.abs(x - p / q);
+    if (err < bestErr) { bestP = p; bestQ = q; bestErr = err; }
+  }
+  return { p: bestP, q: bestQ, err: bestErr };
+}
+function formatPiRational(p, q) {
+  if (p === 0) return "0";
+  const sign = p < 0 ? "-" : "";
+  const ap = Math.abs(p);
+  const num = ap === 1 ? "π" : ap + "π";
+  return q === 1 ? sign + num : sign + num + "/" + q;
+}
+function fmt(x) {
+  if (!isFinite(x)) return String(x);
+  if (Math.abs(x) < 5e-4) return "0";
+  const tol = Math.max(3e-3, 3e-3 * Math.abs(x));
+  const pi = bestFraction(x / Math.PI, 16);
+  if (pi && pi.err * Math.PI < tol && Math.abs(pi.p) <= 16 && pi.q <= 16 && !(pi.p === 0)) {
+    return formatPiRational(pi.p, pi.q);
+  }
+  const fr = bestFraction(x, 30);
+  if (fr && fr.err < tol) {
+    if (fr.q === 1) return String(fr.p);
+    return fr.p + "/" + fr.q;
+  }
+  return x.toFixed(2);
+}
+
 // ─── Known exact values (keyed by canonical input) ───
 // Canonical key: x|y|z|tmin|tmax|P|Q|R
 const EXACT = {
@@ -754,11 +788,11 @@ function rebuildContent() {
   }
 
   // Overlay text
-  const signSpan = result.total >= 0 ? `<span class="sign-positive">${result.total.toFixed(2)}</span>` : `<span class="sign-negative">${result.total.toFixed(2)}</span>`;
+  const signSpan = result.total >= 0 ? `<span class="sign-positive">${fmt(result.total)}</span>` : `<span class="sign-negative">${fmt(result.total)}</span>`;
   document.getElementById("ovCurve").textContent = `r(t) = ⟨${lastInputs.x}, ${lastInputs.y}, ${lastInputs.z}⟩,  t ∈ [${lastInputs.tmin}, ${lastInputs.tmax}]`;
   document.getElementById("ovField").textContent = `F = ⟨${lastInputs.p}, ${lastInputs.q}, ${lastInputs.r}⟩`;
-  document.getElementById("ovWork").innerHTML = `Work ≈ ${result.total.toFixed(2)}  (n = ${n})`;
-  document.getElementById("intVal").textContent = result.total.toFixed(2);
+  document.getElementById("ovWork").innerHTML = `Work ≈ ${fmt(result.total)}  (n = ${n})`;
+  document.getElementById("intVal").textContent = fmt(result.total);
 
   // Exact match lookup
   const key = `${lastInputs.x}|${lastInputs.y}|${lastInputs.z}|${lastInputs.tmin}|${lastInputs.tmax}|${lastInputs.p}|${lastInputs.q}|${lastInputs.r}`;

@@ -199,6 +199,40 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.11.1/math.min.js"></script>
 <script>
+// ─── Smart number formatter: π-multiples > simple fractions > 2 decimals ───
+function bestFraction(x, maxDen) {
+  if (!isFinite(x)) return null;
+  let bestP = 0, bestQ = 1, bestErr = Math.abs(x);
+  for (let q = 1; q <= maxDen; q++) {
+    const p = Math.round(x * q);
+    const err = Math.abs(x - p / q);
+    if (err < bestErr) { bestP = p; bestQ = q; bestErr = err; }
+  }
+  return { p: bestP, q: bestQ, err: bestErr };
+}
+function formatPiRational(p, q) {
+  if (p === 0) return "0";
+  const sign = p < 0 ? "-" : "";
+  const ap = Math.abs(p);
+  const num = ap === 1 ? "π" : ap + "π";
+  return q === 1 ? sign + num : sign + num + "/" + q;
+}
+function fmt(x) {
+  if (!isFinite(x)) return String(x);
+  if (Math.abs(x) < 5e-4) return "0";
+  const tol = Math.max(3e-3, 3e-3 * Math.abs(x));
+  const pi = bestFraction(x / Math.PI, 16);
+  if (pi && pi.err * Math.PI < tol && Math.abs(pi.p) <= 16 && pi.q <= 16 && !(pi.p === 0)) {
+    return formatPiRational(pi.p, pi.q);
+  }
+  const fr = bestFraction(x, 30);
+  if (fr && fr.err < tol) {
+    if (fr.q === 1) return String(fr.p);
+    return fr.p + "/" + fr.q;
+  }
+  return x.toFixed(2);
+}
+
 // ─── State ───
 let Pc = null, Qc = null;        // compiled P, Q
 let x1c = null, y1c = null;      // compiled path 1
@@ -552,9 +586,9 @@ function apply() {
   const I1 = lineIntegral(r1, t1min, t1max, 400);
   const I2 = lineIntegral(r2, t2min, t2max, 400);
   const diff = Math.abs(I1 - I2);
-  document.getElementById("int1Val").textContent = I1.toFixed(2);
-  document.getElementById("int2Val").textContent = I2.toFixed(2);
-  document.getElementById("diffVal").textContent = diff.toFixed(2);
+  document.getElementById("int1Val").textContent = fmt(I1);
+  document.getElementById("int2Val").textContent = fmt(I2);
+  document.getElementById("diffVal").textContent = fmt(diff);
 
   // Conservative verdict
   const { maxAbsCurl, conservative } = isConservativeNumeric();
@@ -574,7 +608,7 @@ function apply() {
     const fA = potentialAt(A[0], A[1]);
     const fB = potentialAt(B[0], B[1]);
     document.getElementById("potentialText").innerHTML =
-      `f(A) ≈ ${fA.toFixed(2)}<br>f(B) ≈ ${fB.toFixed(2)}<br><span style="color:#fbbf24;">f(B) − f(A) ≈ ${(fB-fA).toFixed(2)}</span>` +
+      `f(A) ≈ ${fmt(fA)}<br>f(B) ≈ ${fmt(fB)}<br><span style="color:#fbbf24;">f(B) − f(A) ≈ ${fmt(fB-fA)}</span>` +
       `<br><span style="font-size:11px; color:#94a3b8;">Matches ∫<sub>C</sub> F·dr above — FTLI in action.</span>`;
     potBox.style.display = "block";
   } else {

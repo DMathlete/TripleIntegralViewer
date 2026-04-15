@@ -205,6 +205,42 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.11.1/math.min.js"></script>
 <script>
+// ─── Smart number formatter: π-multiples > simple fractions > 2 decimals ───
+function bestFraction(x, maxDen) {
+  if (!isFinite(x)) return null;
+  let bestP = 0, bestQ = 1, bestErr = Math.abs(x);
+  for (let q = 1; q <= maxDen; q++) {
+    const p = Math.round(x * q);
+    const err = Math.abs(x - p / q);
+    if (err < bestErr) { bestP = p; bestQ = q; bestErr = err; }
+  }
+  return { p: bestP, q: bestQ, err: bestErr };
+}
+function formatPiRational(p, q) {
+  if (p === 0) return "0";
+  const sign = p < 0 ? "-" : "";
+  const ap = Math.abs(p);
+  const num = ap === 1 ? "π" : ap + "π";
+  return q === 1 ? sign + num : sign + num + "/" + q;
+}
+function fmt(x) {
+  if (!isFinite(x)) return String(x);
+  if (Math.abs(x) < 5e-4) return "0";
+  const tol = Math.max(3e-3, 3e-3 * Math.abs(x));
+  // Try π-multiple (small numerator & denominator only)
+  const pi = bestFraction(x / Math.PI, 16);
+  if (pi && pi.err * Math.PI < tol && Math.abs(pi.p) <= 16 && pi.q <= 16 && !(pi.p === 0)) {
+    return formatPiRational(pi.p, pi.q);
+  }
+  // Try plain fraction with modest denominator
+  const fr = bestFraction(x, 30);
+  if (fr && fr.err < tol) {
+    if (fr.q === 1) return String(fr.p);
+    return fr.p + "/" + fr.q;
+  }
+  return x.toFixed(2);
+}
+
 // ─── State ───
 let Pc = null, Qc = null;
 let xc = null, yc = null;
@@ -593,15 +629,15 @@ function apply() {
   const { circ, flux } = boundaryIntegrals(800);
   const { circDouble, fluxDouble } = doubleIntegrals(140, 140);
 
-  document.getElementById("circLine").textContent   = circ.toFixed(2);
-  document.getElementById("circDouble").textContent = circDouble.toFixed(2);
-  document.getElementById("fluxLine").textContent   = flux.toFixed(2);
-  document.getElementById("fluxDouble").textContent = fluxDouble.toFixed(2);
+  document.getElementById("circLine").textContent   = fmt(circ);
+  document.getElementById("circDouble").textContent = fmt(circDouble);
+  document.getElementById("fluxLine").textContent   = fmt(flux);
+  document.getElementById("fluxDouble").textContent = fmt(fluxDouble);
 
   const cd = Math.abs(circ - circDouble);
   const fd = Math.abs(flux - fluxDouble);
-  document.getElementById("circDiff").textContent = cd.toFixed(2);
-  document.getElementById("fluxDiff").textContent = fd.toFixed(2);
+  document.getElementById("circDiff").textContent = fmt(cd);
+  document.getElementById("fluxDiff").textContent = fmt(fd);
   const scaleCirc = Math.max(Math.abs(circ), Math.abs(circDouble), 1);
   const scaleFlux = Math.max(Math.abs(flux), Math.abs(fluxDouble), 1);
   const circOK = cd / scaleCirc < 0.02;
@@ -613,7 +649,7 @@ function apply() {
   fMatch.className = "match-pill " + (fluxOK ? "ok" : "bad");
   fMatch.textContent = fluxOK ? "Green's ✓" : "diverge";
 
-  document.getElementById("areaVal").textContent = signedArea.toFixed(2);
+  document.getElementById("areaVal").textContent = fmt(signedArea);
   document.getElementById("orientVal").textContent =
     Math.abs(signedArea) < 1e-6
       ? "degenerate (zero area)"
