@@ -142,6 +142,7 @@
       <label><input type="checkbox" id="chkColor" checked> Color curve by f</label>
       <label><input type="checkbox" id="chkGrid" checked> Grid & Axes</label>
       <label><input type="checkbox" id="chkSamples" checked> Riemann samples</label>
+      <label><input type="checkbox" id="chkSurface"> Surface z = f(x,y)</label>
     </div>
 
     <div class="divider">
@@ -410,7 +411,7 @@ scene.add(contentGroup);
 
 // ─── State ───
 let n = 60;
-let showCurtain = true, showColor = true, showSamples = true, showPanels = true;
+let showCurtain = true, showColor = true, showSamples = true, showPanels = true, showSurface = false;
 let sweepT = null;
 let sweepAnim = null;
 
@@ -654,6 +655,52 @@ function rebuildContent() {
     end.position.set(pL[0], pL[1], pL[2]); contentGroup.add(end);
   }
 
+  // Surface z = f(x,y)
+  if (showSurface && activeCurve.dim === 2) {
+    const RES = 60;
+    const lo = -5, hi = 5;
+    const step = (hi - lo) / RES;
+    const positions = [], indices = [], colors = [];
+    const fAbs2 = Math.max(Math.abs(result.fMin), Math.abs(result.fMax), 0.01);
+    for (let iy = 0; iy <= RES; iy++) {
+      for (let ix = 0; ix <= RES; ix++) {
+        const x = lo + ix * step;
+        const y = lo + iy * step;
+        let z;
+        try { z = activeField.fn(x, y, 0) * hs; } catch { z = 0; }
+        if (!isFinite(z)) z = 0;
+        positions.push(x, y, z);
+        const t01 = Math.max(0, Math.min(1, (activeField.fn(x, y, 0) - result.fMin) / (result.fMax - result.fMin + 1e-10)));
+        const col = viridisColor(t01);
+        colors.push(col.r, col.g, col.b);
+      }
+    }
+    for (let iy = 0; iy < RES; iy++) {
+      for (let ix = 0; ix < RES; ix++) {
+        const a = iy * (RES + 1) + ix;
+        const b = a + 1;
+        const c = a + (RES + 1);
+        const d = c + 1;
+        indices.push(a, b, d, a, d, c);
+      }
+    }
+    const surfGeom = new THREE.BufferGeometry();
+    surfGeom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    surfGeom.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    surfGeom.setIndex(indices);
+    surfGeom.computeVertexNormals();
+    // Translucent fill
+    contentGroup.add(new THREE.Mesh(surfGeom, new THREE.MeshPhongMaterial({
+      vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity: 0.25,
+      shininess: 30, depthWrite: false
+    })));
+    // Wireframe overlay
+    const wireGeom = surfGeom.clone();
+    contentGroup.add(new THREE.Mesh(wireGeom, new THREE.MeshBasicMaterial({
+      wireframe: true, color: 0x94a3b8, transparent: true, opacity: 0.12
+    })));
+  }
+
   // HUD
   const sweepTxt = sweepT !== null && sweepT < 1 ? ` (sweep ${(sweepT*100).toFixed(0)}%)` : '';
   document.getElementById("intVal").textContent = fmt(result.total) + sweepTxt;
@@ -699,6 +746,7 @@ document.getElementById("chkPanels").onchange = e => { showPanels = e.target.che
 document.getElementById("chkColor").onchange = e => { showColor = e.target.checked; rebuildContent(); };
 document.getElementById("chkGrid").onchange = e => { showGrid = e.target.checked; buildAxes(); };
 document.getElementById("chkSamples").onchange = e => { showSamples = e.target.checked; rebuildContent(); };
+document.getElementById("chkSurface").onchange = e => { showSurface = e.target.checked; rebuildContent(); };
 
 document.getElementById("resetBtn").onclick = () => {
   camera.position.copy(DEFAULT_CAM);
