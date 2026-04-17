@@ -574,10 +574,12 @@ function drawBoundary() {
 }
 
 // ─── Microcurl animation: tiny CCW loops inside D with interior-edge cancellation ───
-// t in [0,1]: at 0 show all 4 edges of every tiny loop; at 1 show only edges not shared with neighbors
+// Phase 1 (t 0→0.4): all edges + CCW arrows appear
+// Phase 2 (t 0.4→0.85): shared interior edges fade to show cancellation
+// Phase 3 (t 0.85→1): only boundary edges remain = the line integral
 function drawMicrocurl() {
   if (microT === null) return;
-  const cells = 18;
+  const cells = 12;
   const dx = (2 * rangeR) / cells;
   const occ = [];
   for (let i = 0; i < cells; i++) {
@@ -596,26 +598,72 @@ function drawMicrocurl() {
       const x1 = x0 + dx, y1 = y0 + dx;
       const [sx0, sy0] = worldToScreen(x0, y0);
       const [sx1, sy1] = worldToScreen(x1, y1);
-      // 4 edges: bottom, right, top, left
-      //   shared-with-neighbor flags
-      const sharedBottom = j > 0      && occ[i][j-1];
+      // shared-with-neighbor flags
+      const sharedBottom = j > 0       && occ[i][j-1];
       const sharedRight  = i < cells-1 && occ[i+1][j];
       const sharedTop    = j < cells-1 && occ[i][j+1];
-      const sharedLeft   = i > 0      && occ[i-1][j];
+      const sharedLeft   = i > 0       && occ[i-1][j];
+      // In screen coords: worldToScreen flips y, so sy0 > sy1 (bottom of world = top of screen)
+      // Edges in CCW order (screen): top(sy1), right(sx1), bottom(sy0), left(sx0)
       const edges = [
-        { sx: sx0, sy: sy0, ex: sx1, ey: sy0, shared: sharedBottom },
-        { sx: sx1, sy: sy0, ex: sx1, ey: sy1, shared: sharedRight  },
-        { sx: sx1, sy: sy1, ex: sx0, ey: sy1, shared: sharedTop    },
-        { sx: sx0, sy: sy1, ex: sx0, ey: sy0, shared: sharedLeft   }
+        { sx: sx0, sy: sy1, ex: sx1, ey: sy1, shared: sharedTop    },   // top edge in world
+        { sx: sx1, sy: sy1, ex: sx1, ey: sy0, shared: sharedRight  },   // right edge
+        { sx: sx1, sy: sy0, ex: sx0, ey: sy0, shared: sharedBottom },   // bottom edge in world
+        { sx: sx0, sy: sy0, ex: sx0, ey: sy1, shared: sharedLeft   }    // left edge
       ];
+      // Phase timing
+      const fadeStart = 0.35, fadeEnd = 0.85;
       for (const e of edges) {
-        // interior edges fade out with microT; boundary edges stay
-        const alpha = e.shared ? (1 - microT) * 0.7 : 0.95;
+        let alpha;
+        if (e.shared) {
+          // Interior edges: full until fadeStart, then fade to 0 by fadeEnd
+          if (microT < fadeStart) alpha = 0.9;
+          else alpha = Math.max(0, 1 - (microT - fadeStart) / (fadeEnd - fadeStart)) * 0.9;
+        } else {
+          // Boundary edges: always visible, get brighter over time
+          alpha = 0.6 + 0.4 * Math.min(1, microT / fadeEnd);
+        }
         if (alpha <= 0.02) continue;
-        ctx.strokeStyle = `rgba(167,139,250,${alpha})`;
-        ctx.lineWidth = e.shared ? 1 : 2;
+        ctx.strokeStyle = e.shared
+          ? `rgba(167,139,250,${alpha})`
+          : `rgba(250,204,21,${alpha})`;
+        ctx.lineWidth = e.shared ? 1.5 : 3;
         ctx.beginPath();
         ctx.moveTo(e.sx, e.sy); ctx.lineTo(e.ex, e.ey); ctx.stroke();
+      }
+      // Small CCW circulation arrow inside each microsquare
+      if (microT < 0.55) {
+        const arrowAlpha = Math.max(0, 1 - microT / 0.55) * 0.85;
+        const cxS = (sx0 + sx1) / 2, cyS = (sy0 + sy1) / 2;
+        const r = Math.abs(sx1 - sx0) * 0.25;
+        const aLen = 6;  // arrowhead size
+        // Draw arc CCW on screen (anticlockwise=true) — visually intuitive for students
+        // Arc from ~4 o'clock going CCW (up & left) 270° to ~7 o'clock
+        const arcStart = Math.PI * 0.3;              // ~55° (near 2 o'clock)
+        const arcEnd   = arcStart - Math.PI * 1.5;   // 270° CCW on screen
+        // Shorten arc slightly so arrowhead replaces the last bit
+        const trimAngle = 0.2;
+        ctx.strokeStyle = `rgba(74,222,128,${arrowAlpha})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cxS, cyS, r, arcStart, arcEnd + trimAngle, true);
+        ctx.stroke();
+        // Arrowhead tip sits exactly at arcEnd (the leading edge of CCW motion)
+        const tipX = cxS + r * Math.cos(arcEnd);
+        const tipY = cyS + r * Math.sin(arcEnd);
+        // Base points: two points on the arc a bit behind the tip
+        const b1Angle = arcEnd + trimAngle * 0.9;
+        const b1x = cxS + (r - aLen * 0.45) * Math.cos(b1Angle);
+        const b1y = cyS + (r - aLen * 0.45) * Math.sin(b1Angle);
+        const b2x = cxS + (r + aLen * 0.45) * Math.cos(b1Angle);
+        const b2y = cyS + (r + aLen * 0.45) * Math.sin(b1Angle);
+        ctx.fillStyle = `rgba(74,222,128,${arrowAlpha})`;
+        ctx.beginPath();
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(b1x, b1y);
+        ctx.lineTo(b2x, b2y);
+        ctx.closePath();
+        ctx.fill();
       }
     }
   }
@@ -626,12 +674,30 @@ function redraw() {
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = "#0b1324";
   ctx.fillRect(0, 0, W, H);
+  const animActive = microT !== null;
   drawHeatmap();
   drawGrid();
-  drawField();
+  if (!animActive) drawField();
   drawInterior();
+  if (animActive) {
+    // dim everything behind the animation
+    ctx.fillStyle = "rgba(11,19,36,0.55)";
+    ctx.fillRect(0, 0, W, H);
+  }
   drawMicrocurl();
   drawBoundary();
+  // Draw microcurl label AFTER boundary so it's on top
+  if (microT !== null && microT > 0.85) {
+    const labelAlpha = Math.min(1, (microT - 0.85) / 0.15);
+    ctx.save();
+    ctx.fillStyle = `rgba(11,19,36,0.7)`;
+    ctx.fillRect(W/2 - 240, 58, 480, 34);
+    ctx.fillStyle = `rgba(250,204,21,${labelAlpha})`;
+    ctx.font = "bold 16px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("Interior edges cancel → only ∂D boundary remains", W / 2, 80);
+    ctx.restore();
+  }
 }
 
 // ─── Apply & compute ───
@@ -712,7 +778,7 @@ document.getElementById("microBtn").onclick = () => {
   }
   microT = 0;
   document.getElementById("microBtn").textContent = "⏸ Stop";
-  const dur = 2800;
+  const dur = 5000;
   const start = performance.now();
   function step() {
     const now = performance.now();
@@ -725,7 +791,7 @@ document.getElementById("microBtn").onclick = () => {
         microT = null; microAnim = null;
         document.getElementById("microBtn").textContent = "▶ Microcurl";
         redraw();
-      }, 1800);
+      }, 3000);
     }
   }
   step();
