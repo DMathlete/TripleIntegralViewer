@@ -31,6 +31,7 @@
     transition: border-color 0.15s;
   }
   input[type="text"]:focus { outline: none; border-color: #fbbf24; }
+  input[type="text"]:disabled { opacity: 0.45; cursor: not-allowed; }
   input[type="text"].err { border-color: #ef4444; }
   .input-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
   .input-row .lbl { font-family: "Courier New", monospace; font-size: 12px; color: #94a3b8; min-width: 42px; text-align: right; }
@@ -83,6 +84,7 @@
   <canvas id="plot"></canvas>
     <div id="overlay">
       <div id="ovField"></div>
+      <div id="ovCurve" style="color:#38bdf8; margin-top:2px;"></div>
       <div id="ovProbe" style="color:#a78bfa; margin-top:3px;"></div>
     </div>
     <div id="hint">Hover to probe F, curl, div at a point</div>
@@ -111,6 +113,17 @@
 
     <div class="divider">
       <div class="label">Closed Curve ∂D: r(t) = ⟨x(t), y(t)⟩</div>
+      <div style="margin-bottom:8px;">
+        <select id="presetSelect" style="width:100%; padding:5px 8px; background:#0b1324; color:#e2e8f0; border:1px solid #334155; border-radius:4px; font-size:13px; font-family:inherit;">
+          <option value="custom">Custom (manual entry)</option>
+          <option value="circle" selected>Circle</option>
+          <option value="ellipse">Ellipse (2:1)</option>
+          <option value="square">Square</option>
+          <option value="triangle">Triangle (equilateral)</option>
+          <option value="rectangle">Rectangle (2×1)</option>
+          <option value="diamond">Diamond</option>
+        </select>
+      </div>
       <div class="pair-row">
         <span class="lbl">x(t) =</span>
         <input type="text" id="xInput" value="cos(t)">
@@ -248,6 +261,65 @@ let tmin = 0, tmax = 2 * Math.PI;
 let polygon = [];              // sampled boundary as array of [x, y]
 let signedArea = 0;            // from shoelace on polygon
 let bbox = { xmin:-1, xmax:1, ymin:-1, ymax:1 };
+let activePreset = "circle";   // current preset key or "custom"
+
+// ─── Region presets ───
+// Each preset has: label for the overlay, parametric rFn(t), tmin, tmax,
+// and display strings for the x(t)/y(t) text inputs.
+function lerp2(a, b, s) { return [a[0]+(b[0]-a[0])*s, a[1]+(b[1]-a[1])*s]; }
+function polygonPath(verts) {
+  // Returns rFn for a closed polygon traversed CCW, t ∈ [0, verts.length]
+  const n = verts.length;
+  return function(t) {
+    t = ((t % n) + n) % n;            // wrap into [0, n)
+    const seg = Math.floor(t);
+    const s   = t - seg;
+    const a = verts[seg], b = verts[(seg + 1) % n];
+    return lerp2(a, b, s);
+  };
+}
+
+const PRESETS = {
+  circle: {
+    xExpr: "cos(t)", yExpr: "sin(t)", tminExpr: "0", tmaxExpr: "2*pi",
+    desc: "∂D: unit circle",
+    rFn: null  // null = use math.js compile from text fields
+  },
+  ellipse: {
+    xExpr: "2*cos(t)", yExpr: "sin(t)", tminExpr: "0", tmaxExpr: "2*pi",
+    desc: "∂D: ellipse (a=2, b=1)",
+    rFn: null
+  },
+  diamond: {
+    xExpr: "—", yExpr: "—", tminExpr: "0", tmaxExpr: "4",
+    desc: "∂D: diamond (|x|+|y|=1)",
+    // Override: piecewise
+    _verts: [[1,0],[0,1],[-1,0],[0,-1]],
+    get rFn() { return polygonPath(this._verts); },
+    tmin: 0, tmax: 4
+  },
+  square: {
+    xExpr: "—", yExpr: "—", tminExpr: "0", tmaxExpr: "4",
+    desc: "∂D: square [−1,1]²",
+    _verts: [[1,-1],[1,1],[-1,1],[-1,-1]],
+    get rFn() { return polygonPath(this._verts); },
+    tmin: 0, tmax: 4
+  },
+  rectangle: {
+    xExpr: "—", yExpr: "—", tminExpr: "0", tmaxExpr: "4",
+    desc: "∂D: rectangle [−1.5,1.5]×[−0.75,0.75]",
+    _verts: [[1.5,-0.75],[1.5,0.75],[-1.5,0.75],[-1.5,-0.75]],
+    get rFn() { return polygonPath(this._verts); },
+    tmin: 0, tmax: 4
+  },
+  triangle: {
+    xExpr: "—", yExpr: "—", tminExpr: "0", tmaxExpr: "3",
+    desc: "∂D: equilateral triangle",
+    _verts: [[1, 0], [-0.5, Math.sqrt(3)/2], [-0.5, -Math.sqrt(3)/2]],
+    get rFn() { return polygonPath(this._verts); },
+    tmin: 0, tmax: 3
+  }
+};
 
 let mode = "circ";             // "circ" or "flux"
 let showField = true, showHeatmap = true, showInterior = true, showGrid = true;
@@ -293,10 +365,6 @@ function screenToWorld(sx, sy) {
 function compileAll() {
   const pE = document.getElementById("pInput").value.trim();
   const qE = document.getElementById("qInput").value.trim();
-  const xE = document.getElementById("xInput").value.trim();
-  const yE = document.getElementById("yInput").value.trim();
-  const tminE = document.getElementById("tminInput").value.trim();
-  const tmaxE = document.getElementById("tmaxInput").value.trim();
 
   const errEl = document.getElementById("errMsg");
   errEl.textContent = "";
@@ -304,34 +372,57 @@ function compileAll() {
     document.getElementById(id).classList.remove("err");
   });
 
+  // Compile P and Q (always from text inputs)
   let which = "";
   try {
     which = "P"; Pc = math.compile(pE); Pc.evaluate({x:0,y:0});
     which = "Q"; Qc = math.compile(qE); Qc.evaluate({x:0,y:0});
-    which = "x"; xc = math.compile(xE); xc.evaluate({t:0});
-    which = "y"; yc = math.compile(yE); yc.evaluate({t:0});
-    which = "tmin"; tmin = math.evaluate(tminE);
-    which = "tmax"; tmax = math.evaluate(tmaxE);
-    if (!isFinite(tmin) || !isFinite(tmax) || tmax <= tmin) {
-      which = "tmax";
-      throw new Error("bounds must be finite with t_max > t_min");
-    }
   } catch (e) {
     errEl.textContent = `Error in ${which}: ${e.message}`;
-    const map = { P:"pInput", Q:"qInput", x:"xInput", y:"yInput",
-                  tmin:"tminInput", tmax:"tmaxInput" };
+    const map = { P:"pInput", Q:"qInput" };
     if (map[which]) document.getElementById(map[which]).classList.add("err");
     return false;
   }
-
   Pfn = (x, y) => { const v = Pc.evaluate({x, y}); return isFinite(v) ? v : 0; };
   Qfn = (x, y) => { const v = Qc.evaluate({x, y}); return isFinite(v) ? v : 0; };
-  rFn = (t) => [xc.evaluate({t}), yc.evaluate({t})];
+
+  // Compile curve — either from preset or from text inputs
+  const preset = PRESETS[activePreset];
+  if (preset && preset.rFn) {
+    // Piecewise preset — use built-in JS function
+    rFn = preset.rFn;
+    tmin = preset.tmin;
+    tmax = preset.tmax;
+    document.getElementById("ovCurve").textContent = preset.desc;
+  } else {
+    // Custom or smooth preset — compile from text fields
+    const xE = document.getElementById("xInput").value.trim();
+    const yE = document.getElementById("yInput").value.trim();
+    const tminE = document.getElementById("tminInput").value.trim();
+    const tmaxE = document.getElementById("tmaxInput").value.trim();
+    try {
+      which = "x"; xc = math.compile(xE); xc.evaluate({t:0});
+      which = "y"; yc = math.compile(yE); yc.evaluate({t:0});
+      which = "tmin"; tmin = math.evaluate(tminE);
+      which = "tmax"; tmax = math.evaluate(tmaxE);
+      if (!isFinite(tmin) || !isFinite(tmax) || tmax <= tmin) {
+        which = "tmax";
+        throw new Error("bounds must be finite with t_max > t_min");
+      }
+    } catch (e) {
+      errEl.textContent = `Error in ${which}: ${e.message}`;
+      const map = { x:"xInput", y:"yInput", tmin:"tminInput", tmax:"tmaxInput" };
+      if (map[which]) document.getElementById(map[which]).classList.add("err");
+      return false;
+    }
+    rFn = (t) => [xc.evaluate({t}), yc.evaluate({t})];
+    document.getElementById("ovCurve").textContent = `∂D: r(t) = ⟨${xE}, ${yE}⟩`;
+  }
 
   document.getElementById("ovField").textContent = `F = ⟨${pE}, ${qE}⟩`;
 
   // Sample polygon
-  const N = 400;
+  const N = 600;
   polygon = [];
   for (let i = 0; i <= N; i++) {
     const t = tmin + (tmax - tmin) * i / N;
@@ -705,8 +796,8 @@ function apply() {
   if (!compileAll()) return;
   redraw();
 
-  const { circ, flux } = boundaryIntegrals(800);
-  const { circDouble, fluxDouble } = doubleIntegrals(140, 140);
+  const { circ, flux } = boundaryIntegrals(1200);
+  const { circDouble, fluxDouble } = doubleIntegrals(160, 160);
 
   document.getElementById("circLine").textContent   = fmt(circ);
   document.getElementById("circDouble").textContent = fmt(circDouble);
@@ -797,11 +888,51 @@ document.getElementById("microBtn").onclick = () => {
   step();
 };
 
+// ─── Preset dropdown ───
+function applyPreset(key) {
+  activePreset = key;
+  const preset = PRESETS[key];
+  const curveInputs = ["xInput","yInput","tminInput","tmaxInput"];
+  if (preset && preset.rFn) {
+    // Piecewise preset — show display strings, disable editing
+    document.getElementById("xInput").value = preset.xExpr;
+    document.getElementById("yInput").value = preset.yExpr;
+    document.getElementById("tminInput").value = preset.tminExpr;
+    document.getElementById("tmaxInput").value = preset.tmaxExpr;
+    curveInputs.forEach(id => document.getElementById(id).disabled = true);
+  } else if (preset) {
+    // Smooth preset (circle, ellipse) — fill and keep editable
+    document.getElementById("xInput").value = preset.xExpr;
+    document.getElementById("yInput").value = preset.yExpr;
+    document.getElementById("tminInput").value = preset.tminExpr;
+    document.getElementById("tmaxInput").value = preset.tmaxExpr;
+    curveInputs.forEach(id => document.getElementById(id).disabled = false);
+  } else {
+    // Custom — enable fields and restore defaults if they contain placeholder text
+    curveInputs.forEach(id => document.getElementById(id).disabled = false);
+    if (document.getElementById("xInput").value === "—") {
+      document.getElementById("xInput").value = "cos(t)";
+      document.getElementById("yInput").value = "sin(t)";
+      document.getElementById("tminInput").value = "0";
+      document.getElementById("tmaxInput").value = "2*pi";
+    }
+  }
+  apply();
+}
+document.getElementById("presetSelect").onchange = e => applyPreset(e.target.value);
+
 // ─── Controls ───
 document.getElementById("applyBtn").onclick = apply;
 ["pInput","qInput","xInput","yInput","tminInput","tmaxInput"].forEach(id => {
   document.getElementById(id).addEventListener("keydown", e => {
-    if (e.key === "Enter") apply();
+    if (e.key === "Enter") {
+      // If user edits text fields, switch to custom mode
+      if (["xInput","yInput","tminInput","tmaxInput"].includes(id)) {
+        activePreset = "custom";
+        document.getElementById("presetSelect").value = "custom";
+      }
+      apply();
+    }
   });
 });
 document.getElementById("chkField").onchange    = e => { showField = e.target.checked; redraw(); };
