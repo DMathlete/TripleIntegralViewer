@@ -416,7 +416,7 @@ function init() {
   const w = window.innerWidth, h = window.innerHeight;
   camera = new THREE.PerspectiveCamera(50, w/h, 0.1, 200);
   camera.up.set(0, 0, 1);
-  camera.position.set(4.0, -4.0, 3.0);
+  camera.position.set(4.0, 4.0, 3.0);
   renderer = new THREE.WebGLRenderer({antialias:true});
   renderer.setSize(w,h);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -528,7 +528,7 @@ document.getElementById("applyBtn").addEventListener("click", apply);
 document.getElementById("resetBtn").addEventListener("click", () => {
   controls.reset();
   camera.up.set(0, 0, 1);
-  camera.position.set(4.0, -4.0, 3.0);
+  camera.position.set(4.0, 4.0, 3.0);
   controls.target.set(0,0,0);
 });
 document.getElementById("presetSelect").addEventListener("change", (e) => {
