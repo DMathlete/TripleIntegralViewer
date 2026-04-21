@@ -83,8 +83,8 @@
 </style>
 </head>
 <body>
-  <h1>MA204 — Line Integral Visualizers</h1>
-  <p class="subtitle">Interactive 3D tools for Block IV: Vector Calculus</p>
+  <h1>MA204 — Vector Calculus Visualizers</h1>
+  <p class="subtitle">Interactive 3D tools for Block V: Vector Calculus — line integrals, surfaces, and surface integrals</p>
 
   <div class="tools">
     <a class="tool-card" href="Line_Integral_Visualizer.html">
@@ -116,6 +116,30 @@
       <div class="tool-formula">$\displaystyle \oint_{\partial D} P\,dx + Q\,dy = \iint_D (Q_x - P_y)\,dA$</div>
       <div class="tool-desc">
         Watch both forms of Green's Theorem verify themselves. Enter any closed curve and field; compare boundary line integrals to interior double integrals for circulation and flux, with a live curl/divergence heatmap and a microcurl cancellation animation.
+      </div>
+    </a>
+
+    <a class="tool-card" href="Parametric_Surfaces_Visualizer.html">
+      <div class="tool-title">Parametric Surfaces</div>
+      <div class="tool-formula">$\displaystyle \mathbf{r}(u,v) = \langle x(u,v),\ y(u,v),\ z(u,v)\rangle$</div>
+      <div class="tool-desc">
+        Pick a preset (sphere, cone, torus, Möbius strip, surface of revolution) or type your own $\mathbf{r}(u,v)$. Hover any point to see the tangent vectors $\mathbf{r}_u$, $\mathbf{r}_v$, and the normal $\mathbf{r}_u \times \mathbf{r}_v$ rendered live, with an optional tangent plane overlay.
+      </div>
+    </a>
+
+    <a class="tool-card" href="Surface_Area_Visualizer.html">
+      <div class="tool-title">Surface Area</div>
+      <div class="tool-formula">$\displaystyle A(S) = \iint_D |\mathbf{r}_u \times \mathbf{r}_v|\, dA$</div>
+      <div class="tool-desc">
+        Watch the Riemann sum $\sum |\mathbf{r}_u \times \mathbf{r}_v|\,\Delta u\,\Delta v$ converge to the surface area as you crank up the grid resolution. Heatmap mode colors the surface by the area magnifier $|\mathbf{r}_u \times \mathbf{r}_v|$ so you can see where the parameter grid stretches most.
+      </div>
+    </a>
+
+    <a class="tool-card" href="Surface_Integral_Visualizer.html">
+      <div class="tool-title">Surface Integral</div>
+      <div class="tool-formula">$\displaystyle \iint_S f\, dS = \iint_D f(\mathbf{r}(u,v))\,|\mathbf{r}_u \times \mathbf{r}_v|\, dA$</div>
+      <div class="tool-desc">
+        Pick any surface and any scalar field $f(x,y,z)$. The surface color-maps $f$ evaluated on $S$; the Riemann sum approximating $\iint_S f\, dS$ updates live as you refine the grid. Physical readings: mass of a thin shell, total charge, or average of $f$ over $S$.
       </div>
     </a>
   </div>

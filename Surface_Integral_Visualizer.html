@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 56: Surface Integral Visualizer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0f172a; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; margin: 0; overflow: hidden; width: 100vw; height: 100vh; }
+  #topBar { position: fixed; top: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: rgba(15,23,42,0.85); backdrop-filter: blur(6px); border-bottom: 1px solid #334155; }
+  #topBar h1 { font-size: 18px; margin: 0; white-space: nowrap; }
+  #topBar .nav-links { font-size: 12px; }
+  #topBar .nav-links a { color: #38bdf8; text-decoration: none; margin: 0 6px; }
+  #topBar .nav-links a:hover { text-decoration: underline; }
+  #togglePanel { background: rgba(251,191,36,0.15); border: 1px solid #fbbf24; color: #fbbf24; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; font-family: inherit; white-space: nowrap; }
+  #togglePanel:hover { background: rgba(251,191,36,0.3); }
+  #canvasWrap { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; overflow: hidden; background: #0b1324; z-index: 0; }
+  #canvasWrap canvas { display: block; }
+  #overlay { position: fixed; top: 56px; left: 10px; font: 12px "Courier New", monospace; color: #e2e8f0; pointer-events: none; background: rgba(11,19,36,0.78); padding: 8px 12px; border-radius: 4px; max-width: 480px; z-index: 10; }
+  #overlay .k { color: #fbbf24; }
+  #hint { position: fixed; bottom: 10px; left: 10px; font-size: 11px; color: #64748b; pointer-events: none; background: rgba(11,19,36,0.6); padding: 3px 6px; border-radius: 3px; z-index: 10; }
+  .panel { position: fixed; top: 46px; right: 0; bottom: 0; background: rgba(30,41,59,0.94); backdrop-filter: blur(8px); border-left: 1px solid #334155; padding: 14px; width: 360px; overflow-y: auto; z-index: 20; transition: transform 0.3s ease; }
+  .panel.collapsed { transform: translateX(100%); }
+  .label { color: #fbbf24; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .divider { border-top: 1px solid #334155; margin: 12px 0; padding-top: 12px; }
+  label { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; margin-bottom: 6px; }
+  input[type="range"] { width: 100%; accent-color: #fbbf24; }
+  input[type="text"], input[type="number"], select {
+    background: #0b1324; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px;
+    padding: 5px 8px; font-family: "Courier New", monospace; font-size: 13px; width: 100%;
+  }
+  input[type="text"]:focus, select:focus { outline: none; border-color: #fbbf24; }
+  input[type="text"].err { border-color: #ef4444; }
+  .input-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+  .input-row .lbl { font-family: "Courier New", monospace; font-size: 12px; color: #94a3b8; min-width: 50px; text-align: right; }
+  .range-row { display: flex; align-items: center; gap: 4px; margin-bottom: 5px; }
+  .range-row .lbl { font-family: "Courier New", monospace; font-size: 12px; color: #94a3b8; min-width: 42px; text-align: right; }
+  .range-row input[type="text"] { width: 70px; flex: none; }
+  .btn-row { display: flex; gap: 6px; }
+  .action-btn { flex: 1; padding: 7px; border-radius: 6px; border: 1px solid #fbbf24; background: rgba(251,191,36,0.15); color: #fbbf24; cursor: pointer; font-size: 12px; font-weight: 600; font-family: inherit; }
+  .action-btn:hover { background: rgba(251,191,36,0.3); }
+  .secondary-btn { flex: 1; padding: 7px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; cursor: pointer; font-size: 12px; font-weight: 600; font-family: inherit; }
+  .secondary-btn:hover { border-color: #38bdf8; color: #38bdf8; }
+  .syntax-help { font-size: 10px; color: #64748b; font-family: "Courier New", monospace; margin-top: 4px; line-height: 1.4; }
+  .err-msg { color: #f87171; font-size: 11px; margin-top: 6px; min-height: 14px; font-family: "Courier New", monospace; }
+  .integral-box { background: #0b1324; border: 2px solid #fbbf24; border-radius: 8px; padding: 12px; margin-top: 8px; text-align: center; }
+  .integral-value { font-size: 22px; font-weight: 700; color: #fbbf24; font-family: "Courier New", monospace; }
+  .integral-note { font-size: 11px; color: #94a3b8; margin-top: 4px; min-height: 14px; }
+  .stats-row { display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; margin-top: 6px; font-family: "Courier New", monospace; }
+  .colorbar { height: 10px; border-radius: 3px; margin-top: 4px;
+    background: linear-gradient(to right, #1e3a8a 0%, #3b82f6 25%, #67e8f9 50%, #fde68a 75%, #ef4444 100%); }
+  .colorbar-labels { display: flex; justify-content: space-between; font-size: 10px; color: #94a3b8; font-family: "Courier New", monospace; margin-top: 2px; }
+</style>
+</head>
+<body>
+<div id="topBar">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <h1>Surface Integral</h1>
+    <span style="color:#fbbf24;font-size:12px;font-style:italic;">∬<sub>S</sub> f dS = ∬<sub>D</sub> f(r(u,v)) |r<sub>u</sub>×r<sub>v</sub>| dA</span>
+  </div>
+  <div class="nav-links">
+    <a href="index.html">← Calculus Tools</a>
+    <span style="color:#334155;">|</span>
+    <a href="Parametric_Surfaces_Visualizer.html">Parametric Surfaces</a>
+    <span style="color:#334155;">|</span>
+    <a href="Surface_Area_Visualizer.html">Surface Area</a>
+  </div>
+  <button id="togglePanel">Controls ☰</button>
+</div>
+
+<div id="canvasWrap">
+  <div id="overlay">
+    <div id="ovSurface" class="k"></div>
+    <div id="ovField" style="color:#67e8f9; margin-top:2px;"></div>
+    <div id="ovStats" style="margin-top:4px;"></div>
+  </div>
+  <div id="hint">Drag to rotate · Scroll to zoom · Color shows f evaluated on the surface</div>
+</div>
+
+<div class="panel">
+  <div class="btn-row" style="margin-bottom: 12px;">
+    <button class="action-btn" id="applyBtn">Apply (↵)</button>
+    <button class="secondary-btn" id="resetBtn">⟲ View</button>
+  </div>
+
+  <div class="label">Scenario Preset</div>
+  <select id="presetSelect">
+    <option value="hemisphere_z" selected>Hemisphere + f = z (expect π)</option>
+    <option value="sphere_one">Sphere + f = 1 (expect 4π = surface area)</option>
+    <option value="sphere_z2">Sphere + f = z² (expect 4π/3)</option>
+    <option value="paraboloid_z">Paraboloid z≤1 + f = z (expect π/240·(25√5 + 1))</option>
+    <option value="cylinder_z">Cylinder + f = z (expect 2π·h²/2)</option>
+    <option value="cone_height">Cone + f = z (linear density)</option>
+    <option value="custom">Custom (manual entry)</option>
+  </select>
+
+  <div class="divider">
+    <div class="label">Surface r(u, v)</div>
+    <div class="input-row">
+      <span class="lbl">x(u,v) =</span>
+      <input type="text" id="xInput" value="sin(u)*cos(v)">
+    </div>
+    <div class="input-row">
+      <span class="lbl">y(u,v) =</span>
+      <input type="text" id="yInput" value="sin(u)*sin(v)">
+    </div>
+    <div class="input-row">
+      <span class="lbl">z(u,v) =</span>
+      <input type="text" id="zInput" value="cos(u)">
+    </div>
+    <div class="range-row">
+      <span class="lbl">u ∈</span>
+      <input type="text" id="uminInput" value="0">
+      <span class="lbl" style="min-width:auto">to</span>
+      <input type="text" id="umaxInput" value="pi/2">
+    </div>
+    <div class="range-row">
+      <span class="lbl">v ∈</span>
+      <input type="text" id="vminInput" value="0">
+      <span class="lbl" style="min-width:auto">to</span>
+      <input type="text" id="vmaxInput" value="2*pi">
+    </div>
+  </div>
+
+  <div class="divider">
+    <div class="label">Scalar Field f(x, y, z)</div>
+    <div class="input-row">
+      <span class="lbl">f =</span>
+      <input type="text" id="fInput" value="z">
+    </div>
+    <div class="err-msg" id="errMsg"></div>
+    <div class="syntax-help">
+      Use x, y, z for surface points. Example densities: z, x²+y², exp(-z²), 1.
+    </div>
+  </div>
+
+  <div class="divider">
+    <div class="label">Resolution</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+      <span style="font-size:12px;">N =</span>
+      <input type="number" id="resNum" min="4" max="200" value="40" style="width:80px;">
+    </div>
+    <input type="range" id="resSlider" min="4" max="150" value="40">
+    <div class="integral-box">
+      <div style="font-size:12px;color:#94a3b8;">∬<sub>S</sub> f dS ≈</div>
+      <div class="integral-value" id="intVal">—</div>
+      <div class="integral-note" id="exactNote"></div>
+    </div>
+    <div class="stats-row">
+      <span id="areaStat">A(S) = —</span>
+      <span id="avgStat">avg f = —</span>
+    </div>
+  </div>
+
+  <div class="divider">
+    <div class="label">f Colormap (on surface)</div>
+    <div class="colorbar"></div>
+    <div class="colorbar-labels">
+      <span id="cbMin">—</span>
+      <span id="cbMax">—</span>
+    </div>
+    <div style="font-size:11px;color:#94a3b8;margin-top:4px;line-height:1.4;">
+      Color shows f(x,y,z) evaluated on the surface. Physically: think surface density, temperature, or charge distribution. The integral accumulates this weighting over the entire surface.
+    </div>
+  </div>
+
+  <div class="divider">
+    <div class="label">Display</div>
+    <label><input type="checkbox" id="chkSurface" checked> Surface</label>
+    <label><input type="checkbox" id="chkAxes" checked> Axes</label>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.11.1/math.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+/* ───────── Scenario presets ───────── */
+const PRESETS = {
+  hemisphere_z: {
+    x:"sin(u)*cos(v)", y:"sin(u)*sin(v)", z:"cos(u)",
+    umin:"0", umax:"pi/2", vmin:"0", vmax:"2*pi",
+    f:"z",
+    exact: Math.PI, exactTxt:"Exact: π ≈ 3.1416"
+  },
+  sphere_one: {
+    x:"sin(u)*cos(v)", y:"sin(u)*sin(v)", z:"cos(u)",
+    umin:"0", umax:"pi", vmin:"0", vmax:"2*pi",
+    f:"1",
+    exact: 4*Math.PI, exactTxt:"Exact: 4π ≈ 12.566 (=surface area)"
+  },
+  sphere_z2: {
+    x:"sin(u)*cos(v)", y:"sin(u)*sin(v)", z:"cos(u)",
+    umin:"0", umax:"pi", vmin:"0", vmax:"2*pi",
+    f:"z^2",
+    exact: 4*Math.PI/3, exactTxt:"Exact: 4π/3 ≈ 4.1888"
+  },
+  paraboloid_z: {
+    x:"u*cos(v)", y:"u*sin(v)", z:"u^2",
+    umin:"0", umax:"1", vmin:"0", vmax:"2*pi",
+    f:"z",
+    exact: Math.PI/60*(25*Math.sqrt(5)+1), exactTxt:"Exact (over disk x²+y²≤1): π/60·(25√5 + 1) ≈ 2.9791"
+  },
+  cylinder_z: {
+    x:"cos(u)", y:"sin(u)", z:"v",
+    umin:"0", umax:"2*pi", vmin:"0", vmax:"2",
+    f:"z",
+    exact: 4*Math.PI, exactTxt:"Exact: ∫₀²π ∫₀² z dz du = 2π·2 = 4π ≈ 12.566"
+  },
+  cone_height: {
+    x:"u*cos(v)", y:"u*sin(v)", z:"u",
+    umin:"0", umax:"2", vmin:"0", vmax:"2*pi",
+    f:"z",
+    exact: 16*Math.PI*Math.SQRT2/3, exactTxt:"Exact: (16√2/3)π ≈ 23.695"
+  }
+};
+
+/* ───────── State ───────── */
+let scene, camera, renderer, controls;
+let surfaceMesh = null;
+let axesHelper = null;
+let activeSurface = null, activeField = null;
+let N = 40;
+let boundingR = 3;
+
+function compileSurface(xE, yE, zE, uminE, umaxE, vminE, vmaxE) {
+  const xC = math.compile(xE), yC = math.compile(yE), zC = math.compile(zE);
+  const umin = math.evaluate(uminE), umax = math.evaluate(umaxE);
+  const vmin = math.evaluate(vminE), vmax = math.evaluate(vmaxE);
+  if (![umin,umax,vmin,vmax].every(isFinite)) throw new Error("parameter bounds must be numeric");
+  if (umax <= umin || vmax <= vmin) throw new Error("invalid parameter range");
+  const r = (u,v) => { const s={u,v}; return [xC.evaluate(s), yC.evaluate(s), zC.evaluate(s)]; };
+  const t = r(umin,vmin); if (!t.every(isFinite)) throw new Error("non-finite surface value");
+  return { r, umin, umax, vmin, vmax, tex:`r(u,v) = ⟨${xE}, ${yE}, ${zE}⟩, u∈[${uminE},${umaxE}], v∈[${vminE},${vmaxE}]` };
+}
+function compileField(fE) {
+  const c = math.compile(fE);
+  const fn = (x,y,z) => { const v = c.evaluate({x,y,z}); return isFinite(v) ? v : 0; };
+  fn(1,1,1);
+  return { fn, label:`f(x,y,z) = ${fE}` };
+}
+
+/* ───────── Colormap ───────── */
+function lerpColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  const stops = [
+    [0.00, [30, 58, 138]],
+    [0.25, [59, 130, 246]],
+    [0.50, [103, 232, 249]],
+    [0.75, [253, 230, 138]],
+    [1.00, [239, 68, 68]]
+  ];
+  for (let i=0; i<stops.length-1; i++) {
+    const [t0, c0] = stops[i], [t1, c1] = stops[i+1];
+    if (t >= t0 && t <= t1) {
+      const f = (t - t0) / (t1 - t0);
+      return [(c0[0]+(c1[0]-c0[0])*f)/255, (c0[1]+(c1[1]-c0[1])*f)/255, (c0[2]+(c1[2]-c0[2])*f)/255];
+    }
+  }
+  return [1,1,1];
+}
+
+/* ───────── Build ───────── */
+function buildSurface() {
+  if (surfaceMesh) { scene.remove(surfaceMesh); surfaceMesh.geometry.dispose(); surfaceMesh.material.dispose(); surfaceMesh = null; }
+  if (!activeSurface || !activeField) return;
+
+  const { r, umin, umax, vmin, vmax } = activeSurface;
+  const { fn } = activeField;
+  const nu = N, nv = N;
+  const du = (umax-umin)/nu, dv = (vmax-vmin)/nv;
+
+  // Sample corners + compute per-cell f and |r_u x r_v|
+  // We use corner-based geometry (shared vertices) and color each vertex by f at that vertex.
+  const positions = new Float32Array((nu+1)*(nv+1)*3);
+  const colors = new Float32Array((nu+1)*(nv+1)*3);
+  const fVals = new Float32Array((nu+1)*(nv+1));
+  let fMin = Infinity, fMax = -Infinity;
+  let maxR = 0;
+
+  for (let i=0; i<=nu; i++) {
+    const u = umin + (umax-umin)*i/nu;
+    for (let j=0; j<=nv; j++) {
+      const v = vmin + (vmax-vmin)*j/nv;
+      const p = r(u,v);
+      const idx = i*(nv+1)+j;
+      positions[3*idx]=p[0]; positions[3*idx+1]=p[1]; positions[3*idx+2]=p[2];
+      const f = fn(p[0],p[1],p[2]);
+      fVals[idx] = f;
+      if (f < fMin) fMin = f;
+      if (f > fMax) fMax = f;
+      const rr = Math.hypot(p[0],p[1],p[2]);
+      if (isFinite(rr) && rr > maxR) maxR = rr;
+    }
+  }
+  boundingR = Math.max(2, Math.min(12, maxR*1.1));
+
+  // Map f to colors
+  const span = Math.max(1e-9, fMax - fMin);
+  for (let k=0; k<fVals.length; k++) {
+    const t = (fVals[k] - fMin) / span;
+    const col = lerpColor(t);
+    colors[3*k] = col[0]; colors[3*k+1] = col[1]; colors[3*k+2] = col[2];
+  }
+
+  // Indices
+  const indices = [];
+  for (let i=0;i<nu;i++) for (let j=0;j<nv;j++) {
+    const a = i*(nv+1)+j, b = (i+1)*(nv+1)+j, c = (i+1)*(nv+1)+(j+1), d = i*(nv+1)+(j+1);
+    indices.push(a,b,c, a,c,d);
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(positions,3));
+  geom.setAttribute("color", new THREE.BufferAttribute(colors,3));
+  geom.setIndex(indices);
+  geom.computeVertexNormals();
+
+  const mat = new THREE.MeshPhongMaterial({
+    vertexColors:true, side:THREE.DoubleSide,
+    flatShading:false, shininess:40, opacity:0.92, transparent:true
+  });
+  surfaceMesh = new THREE.Mesh(geom, mat);
+  surfaceMesh.visible = document.getElementById("chkSurface").checked;
+  scene.add(surfaceMesh);
+
+  // Now compute integral: midpoint rule using r and f at cell centers + r_u, r_v via central difference
+  let intSum = 0, areaSum = 0;
+  for (let i=0; i<nu; i++) {
+    for (let j=0; j<nv; j++) {
+      const u = umin + (i+0.5)*du;
+      const v = vmin + (j+0.5)*dv;
+      const p = r(u,v);
+      const hu = Math.min(du*0.5, 1e-3), hv = Math.min(dv*0.5, 1e-3);
+      const a = r(u+hu,v), b = r(u-hu,v);
+      const c = r(u,v+hv), d = r(u,v-hv);
+      const ru = [(a[0]-b[0])/(2*hu),(a[1]-b[1])/(2*hu),(a[2]-b[2])/(2*hu)];
+      const rv = [(c[0]-d[0])/(2*hv),(c[1]-d[1])/(2*hv),(c[2]-d[2])/(2*hv)];
+      const cross = [ru[1]*rv[2]-ru[2]*rv[1], ru[2]*rv[0]-ru[0]*rv[2], ru[0]*rv[1]-ru[1]*rv[0]];
+      const mag = Math.hypot(...cross);
+      const f = fn(p[0],p[1],p[2]);
+      if (isFinite(mag) && isFinite(f)) {
+        intSum += f * mag * du * dv;
+        areaSum += mag * du * dv;
+      }
+    }
+  }
+
+  document.getElementById("intVal").textContent = intSum.toFixed(4);
+  document.getElementById("areaStat").textContent = `A(S) ≈ ${areaSum.toFixed(4)}`;
+  document.getElementById("avgStat").textContent = `avg f ≈ ${(intSum/Math.max(1e-9,areaSum)).toFixed(4)}`;
+  document.getElementById("cbMin").textContent = fMin.toFixed(3);
+  document.getElementById("cbMax").textContent = fMax.toFixed(3);
+  document.getElementById("ovSurface").textContent = activeSurface.tex;
+  document.getElementById("ovField").textContent = activeField.label;
+  document.getElementById("ovStats").textContent = `N = ${N}×${N} | ∬_S f dS ≈ ${intSum.toFixed(4)} | A(S) ≈ ${areaSum.toFixed(4)}`;
+
+  // Compare to expected (if preset)
+  const key = document.getElementById("presetSelect").value;
+  const preset = PRESETS[key];
+  if (preset && isFinite(preset.exact)) {
+    const err = Math.abs(intSum - preset.exact) / Math.max(1e-9, Math.abs(preset.exact)) * 100;
+    document.getElementById("exactNote").textContent = `${preset.exactTxt}  |  Δ = ${err.toFixed(2)}%`;
+  } else {
+    document.getElementById("exactNote").textContent = "";
+  }
+
+  updateAxes();
+}
+
+function updateAxes() {
+  if (axesHelper) { scene.remove(axesHelper); axesHelper = null; }
+  if (!document.getElementById("chkAxes").checked) return;
+  axesHelper = new THREE.AxesHelper(boundingR);
+  scene.add(axesHelper);
+}
+
+/* ───────── Scene setup ───────── */
+function init() {
+  // Math convention: z-axis is vertical (instead of Three.js default y-up)
+  THREE.Object3D.DEFAULT_UP = new THREE.Vector3(0, 0, 1);
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b1324);
+  const w = window.innerWidth, h = window.innerHeight;
+  camera = new THREE.PerspectiveCamera(50, w/h, 0.1, 200);
+  camera.up.set(0, 0, 1);
+  camera.position.set(4.0, -4.0, 3.0);
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(w,h); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  document.getElementById("canvasWrap").appendChild(renderer.domElement);
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.85);
+  dir.position.set(5,10,7); scene.add(dir);
+  const dir2 = new THREE.DirectionalLight(0xffffff, 0.28);
+  dir2.position.set(-6,-4,-3); scene.add(dir2);
+  window.addEventListener("resize", onResize);
+  animate();
+}
+function onResize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w/h; camera.updateProjectionMatrix(); renderer.setSize(w,h);
+}
+function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+
+/* ───────── UI ───────── */
+function setInputsFromPreset(key) {
+  const p = PRESETS[key]; if (!p) return;
+  document.getElementById("xInput").value = p.x;
+  document.getElementById("yInput").value = p.y;
+  document.getElementById("zInput").value = p.z;
+  document.getElementById("uminInput").value = p.umin;
+  document.getElementById("umaxInput").value = p.umax;
+  document.getElementById("vminInput").value = p.vmin;
+  document.getElementById("vmaxInput").value = p.vmax;
+  document.getElementById("fInput").value = p.f;
+  document.getElementById("exactNote").textContent = p.exactTxt || "";
+}
+function apply() {
+  document.getElementById("errMsg").textContent = "";
+  try {
+    activeSurface = compileSurface(
+      document.getElementById("xInput").value.trim(),
+      document.getElementById("yInput").value.trim(),
+      document.getElementById("zInput").value.trim(),
+      document.getElementById("uminInput").value.trim(),
+      document.getElementById("umaxInput").value.trim(),
+      document.getElementById("vminInput").value.trim(),
+      document.getElementById("vmaxInput").value.trim()
+    );
+    activeField = compileField(document.getElementById("fInput").value.trim());
+    buildSurface();
+  } catch (err) {
+    document.getElementById("errMsg").textContent = err.message;
+  }
+}
+document.getElementById("applyBtn").addEventListener("click", apply);
+document.getElementById("resetBtn").addEventListener("click", () => { controls.reset(); camera.up.set(0,0,1); camera.position.set(4.0,-4.0,3.0); controls.target.set(0,0,0); });
+document.getElementById("presetSelect").addEventListener("change", (e) => { if (e.target.value === "custom") return; setInputsFromPreset(e.target.value); apply(); });
+document.getElementById("togglePanel").addEventListener("click", () => { document.querySelector(".panel").classList.toggle("collapsed"); });
+document.getElementById("resSlider").addEventListener("input", (e) => { N = +e.target.value; document.getElementById("resNum").value = N; buildSurface(); });
+document.getElementById("resNum").addEventListener("change", (e) => { const v = Math.max(4, Math.min(200, +e.target.value || 40)); N = v; document.getElementById("resSlider").value = Math.min(150, N); buildSurface(); });
+["xInput","yInput","zInput","uminInput","umaxInput","vminInput","vmaxInput","fInput"].forEach(id => document.getElementById(id).addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); }));
+document.getElementById("chkSurface").addEventListener("change", () => { if (surfaceMesh) surfaceMesh.visible = document.getElementById("chkSurface").checked; });
+document.getElementById("chkAxes").addEventListener("change", updateAxes);
+
+/* ───────── Boot ───────── */
+init();
+setInputsFromPreset("hemisphere_z");
+apply();
+</script>
+</body>
+</html>
